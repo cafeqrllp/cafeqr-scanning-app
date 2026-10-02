@@ -6,21 +6,33 @@ import axios, { type AxiosInstance, type InternalAxiosRequestConfig, type AxiosR
  * Follows the test-delivery architecture.
  */
 const getApiBase = (): string => {
-  let url = import.meta.env.VITE_API_BASE_URL;
-  if (!url) {
-    if (typeof window !== 'undefined' && window.location) {
-      const hostname = window.location.hostname;
-      if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
-        // Local network IP (e.g. 192.168.x.x, 10.x.x.x)
-        if (/^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(hostname)) {
-          return `http://${hostname}:8080/api`;
-        }
-        return 'https://pos.cafeqr.in/api';
-      }
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+
+  if (typeof window !== 'undefined' && window.location) {
+    const hostname = window.location.hostname;
+    const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+
+    // 1. Localhost development on developer's machine
+    if (isLocal) {
+      return envUrl || 'http://localhost:8080/api';
     }
-    url = 'http://localhost:8080/api';
+
+    // 2. Local network IP testing (e.g. 192.168.x.x, 10.x.x.x)
+    if (/^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(hostname)) {
+      return `http://${hostname}:8080/api`;
+    }
+
+    // 3. Remote deployments (Cloudflare Pages, custom domains, etc.)
+    // If an explicit remote VITE_API_BASE_URL is provided, use it
+    if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+      return envUrl;
+    }
+
+    // Otherwise, point to the deployed production/test backend
+    return 'https://app.cafeqr.in/api';
   }
-  return url;
+
+  return envUrl || 'https://app.cafeqr.in/api';
 };
 
 const api: AxiosInstance = axios.create({

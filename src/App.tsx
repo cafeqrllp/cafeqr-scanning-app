@@ -124,7 +124,8 @@ export function App() {
       setCategories(['All', ...cats]);
     } catch (err: any) {
       console.error('Failed to load table session', err);
-      setError(err.message || 'Unable to connect to restaurant server. Please try again.');
+      const serverMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      setError(serverMsg || 'Unable to connect to restaurant server. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -460,7 +461,13 @@ export function App() {
             <AlertTriangle className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-base font-extrabold text-slate-900">Table Not Found</h2>
+            <h2 className="text-base font-extrabold text-slate-900">
+              {error.toLowerCase().includes('subscription')
+                ? 'Subscription Notice'
+                : error.toLowerCase().includes('network') || error.toLowerCase().includes('connect')
+                ? 'Connection Error'
+                : 'Table Not Found'}
+            </h2>
             <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{error}</p>
           </div>
           <button
