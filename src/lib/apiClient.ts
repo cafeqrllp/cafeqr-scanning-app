@@ -22,17 +22,22 @@ const getApiBase = (): string => {
       return `http://${hostname}:8080/api`;
     }
 
-    // 3. Remote deployments (Cloudflare Pages, custom domains, etc.)
-    // If an explicit remote VITE_API_BASE_URL is provided, use it
+    // 3. Remote deployments: If explicit remote VITE_API_BASE_URL is set, use it
     if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
       return envUrl;
     }
 
-    // Otherwise, point to the deployed test server backend
-    return 'https://test-api.cafeqr.in/api';
+    // 4. Auto-detect environment based on hostname
+    const isTestEnv = hostname.includes('test') || hostname.includes('staging') || hostname.includes('dev');
+    if (isTestEnv) {
+      return 'https://test-api.cafeqr.in/api';
+    }
+
+    // 5. Production default backend API
+    return 'https://app.cafeqr.in/api';
   }
 
-  return envUrl || 'https://test-api.cafeqr.in/api';
+  return envUrl || 'https://app.cafeqr.in/api';
 };
 
 const api: AxiosInstance = axios.create({
