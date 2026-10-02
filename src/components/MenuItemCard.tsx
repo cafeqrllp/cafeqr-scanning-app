@@ -30,8 +30,10 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
   const price = Number(item.price || 0);
 
   const hasVariants = checkHasVariants(item);
+  const isOutOfStock = Boolean(item.outOfStock);
 
   const handleCardClick = () => {
+    if (isOutOfStock) return;
     if (hasVariants) {
       onOpenDetails?.();
     } else {
@@ -44,10 +46,12 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
   return (
     <div 
       onClick={handleCardClick}
-      className={`bg-white rounded-2xl p-2.5 sm:p-3 border transition-all flex flex-col justify-between cursor-pointer group active:scale-[0.99] select-none ${
-        cartQty > 0
-          ? 'border-orange-500/80 shadow-sm ring-1 ring-orange-500/20'
-          : 'border-slate-200/70 shadow-xs hover:border-slate-300 hover:shadow-md'
+      className={`rounded-2xl p-2.5 sm:p-3 border transition-all flex flex-col justify-between select-none relative ${
+        isOutOfStock
+          ? 'bg-slate-100/90 border-slate-200/90 opacity-60 grayscale cursor-not-allowed shadow-none'
+          : cartQty > 0
+          ? 'bg-white border-orange-500/80 shadow-sm ring-1 ring-orange-500/20 cursor-pointer group active:scale-[0.99]'
+          : 'bg-white border-slate-200/70 shadow-xs hover:border-slate-300 hover:shadow-md cursor-pointer group active:scale-[0.99]'
       }`}
     >
       <div>
@@ -57,7 +61,9 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
             <img
               src={imgUrl}
               alt={item.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              className={`w-full h-full object-cover transition-transform duration-300 ${
+                isOutOfStock ? 'grayscale contrast-75' : 'group-hover:scale-105'
+              }`}
               loading="lazy"
               onError={() => setImageError(true)}
             />
@@ -70,8 +76,17 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
             </div>
           )}
 
+          {/* Out of Stock Overlay Badge */}
+          {isOutOfStock && (
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center p-2 z-20">
+              <span className="bg-slate-900/90 text-white border border-white/20 text-[10px] sm:text-xs font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-lg">
+                Out of Stock
+              </span>
+            </div>
+          )}
+
           {/* Veg / Non-Veg Badge */}
-          <div className="absolute top-2 left-2 bg-white/95 backdrop-blur-xs p-1 rounded-md shadow-xs">
+          <div className="absolute top-2 left-2 bg-white/95 backdrop-blur-xs p-1 rounded-md shadow-xs z-20">
             <span
               className={`w-3 h-3 border rounded-xs flex items-center justify-center ${
                 isVeg ? 'border-emerald-600' : 'border-rose-600'
@@ -86,9 +101,9 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
             </span>
           </div>
 
-          {/* Options Badge if product has variants */}
-          {hasVariants && (
-            <div className="absolute bottom-1.5 right-1.5 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-0.5">
+          {/* Options Badge if product has variants and is in stock */}
+          {hasVariants && !isOutOfStock && (
+            <div className="absolute bottom-1.5 right-1.5 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-0.5 z-20">
               <Sparkles className="w-2.5 h-2.5 text-orange-400" />
               <span>Options</span>
             </div>
@@ -98,10 +113,14 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
         {/* Dish Title & Price */}
         <div className="space-y-0.5">
           <div className="flex items-start justify-between gap-1">
-            <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight line-clamp-1 group-hover:text-orange-600 transition-colors">
+            <h3 className={`font-extrabold text-xs sm:text-sm leading-tight line-clamp-1 transition-colors ${
+              isOutOfStock ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-900 group-hover:text-orange-600'
+            }`}>
               {item.name}
             </h3>
-            <span className="font-extrabold text-xs sm:text-sm text-slate-900 shrink-0">
+            <span className={`font-extrabold text-xs sm:text-sm shrink-0 ${
+              isOutOfStock ? 'text-slate-400' : 'text-slate-900'
+            }`}>
               ₹{price.toFixed(price % 1 === 0 ? 0 : 2)}
             </span>
           </div>
@@ -115,8 +134,12 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
         </div>
       </div>
 
-      {/* Show quantity stepper ONLY when selected in cart; no "Order Now" button */}
-      {cartQty > 0 && (
+      {/* Out of Stock Label or Quantity Stepper */}
+      {isOutOfStock ? (
+        <div className="mt-2.5 py-1 px-2 bg-slate-200/90 text-slate-500 rounded-xl text-center text-[10px] sm:text-[11px] font-black uppercase tracking-wider border border-slate-300/80">
+          Out of Stock
+        </div>
+      ) : cartQty > 0 ? (
         <div 
           className="mt-2.5 pt-1"
           onClick={(e) => e.stopPropagation()} // Prevent re-triggering card click
@@ -141,7 +164,7 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
             </button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

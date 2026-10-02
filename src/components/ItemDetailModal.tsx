@@ -7,6 +7,8 @@ export interface VariantOptionItem {
   name: string;
   price: number;
   groupName?: string;
+  outOfStock?: boolean;
+  currentStock?: number | null;
 }
 
 export interface SelectedVariantWithQty {
@@ -74,10 +76,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   // Per-variant dynamic quantities state: { [variantId]: qty }
   const [variantQtys, setVariantQtys] = useState<Record<string, number>>({});
 
-  // Initialize with 1 for the first variant when opened
+  // Initialize with 1 for the first in-stock variant when opened
   useEffect(() => {
     if (variants.length > 0) {
-      setVariantQtys({ [variants[0].id]: initialQty > 0 ? initialQty : 1 });
+      const firstAvailable = variants.find((v) => !v.outOfStock);
+      if (firstAvailable) {
+        setVariantQtys({ [firstAvailable.id]: initialQty > 0 ? initialQty : 1 });
+      } else {
+        setVariantQtys({});
+      }
     } else {
       setVariantQtys({});
     }
@@ -86,6 +93,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   // Dynamic quantity handler for a specific variant
   const handleUpdateVariantQty = (variantId: string, delta: number) => {
+    const target = variants.find((v) => v.id === variantId);
+    if (target?.outOfStock && delta > 0) return;
+
     setVariantQtys((prev) => {
       const current = prev[variantId] || 0;
       const next = current + delta;
@@ -215,21 +225,31 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 {variants.map((v) => {
                   const qty = variantQtys[v.id] || 0;
                   const isSelected = qty > 0;
+                  const isOutOfStock = Boolean(v.outOfStock);
 
                   return (
                     <div
                       key={v.id}
-                      onClick={() => handleUpdateVariantQty(v.id, 1)}
-                      className={`flex items-center justify-between py-2 px-3 rounded-xl border transition-all duration-200 cursor-pointer select-none active:scale-[0.99] ${
-                        isSelected
-                          ? 'border-orange-300/80 bg-orange-50/20 shadow-2xs'
-                          : 'border-slate-100 bg-slate-50/40 hover:bg-slate-50 hover:border-slate-200'
+                      onClick={() => !isOutOfStock && handleUpdateVariantQty(v.id, 1)}
+                      className={`flex items-center justify-between py-2 px-3 rounded-xl border transition-all duration-200 select-none ${
+                        isOutOfStock
+                          ? 'border-slate-100 bg-slate-50/50 opacity-60 cursor-not-allowed'
+                          : isSelected
+                          ? 'border-orange-300/80 bg-orange-50/20 shadow-2xs cursor-pointer active:scale-[0.99]'
+                          : 'border-slate-100 bg-slate-50/40 hover:bg-slate-50 hover:border-slate-200 cursor-pointer active:scale-[0.99]'
                       }`}
                     >
                       {/* Left: Variant Name & Price */}
                       <div className="flex-1 min-w-0 pr-2">
-                        <div className={`text-xs ${isSelected ? 'font-bold text-slate-900' : 'font-medium text-slate-700'}`}>
-                          {v.name}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-xs ${isOutOfStock ? 'text-slate-400 line-through' : isSelected ? 'font-bold text-slate-900' : 'font-medium text-slate-700'}`}>
+                            {v.name}
+                          </span>
+                          {isOutOfStock && (
+                            <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-100">
+                              Out of Stock
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] font-bold text-slate-900 mt-0.5">
                           ₹{v.price.toFixed(0)}
@@ -246,7 +266,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                         className="shrink-0 flex items-center"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {isSelected ? (
+                        {isOutOfStock ? (
+                          <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.8 rounded-md">
+                            Unavailable
+                          </span>
+                        ) : isSelected ? (
                           <div className="flex items-center bg-white border border-orange-200/80 rounded-lg p-0.5 shadow-2xs">
                             <button
                               type="button"

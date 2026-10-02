@@ -12,7 +12,8 @@ import {
   AlertCircle,
   Coffee,
   RotateCcw,
-  MapPin
+  MapPin,
+  X
 } from 'lucide-react';
 import { qrOrderService, type CustomerAuth, type TableSessionInfo } from '../services/qrOrderService';
 
@@ -185,6 +186,18 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
       >
         {/* Soft, Light, Airy Header Banner */}
         <div className="relative pt-7 pb-4 px-6 text-center bg-gradient-to-b from-orange-50/60 via-amber-50/30 to-white border-b border-slate-100/80">
+          {/* Close button */}
+          {onContinueAsGuest && (
+            <button
+              type="button"
+              onClick={onContinueAsGuest}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-100/80 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition active:scale-95 cursor-pointer z-10"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+
           {/* Subtle Cafe Icon Badge */}
           <div className="inline-flex items-center justify-center w-12 h-12 mb-2.5 rounded-2xl bg-white border border-orange-200/70 text-orange-600 shadow-sm shadow-orange-500/10">
             <Coffee className="w-6 h-6 stroke-[2.2]" />

@@ -15,10 +15,14 @@ export interface MenuItem {
   productType?: string;
   taxRate?: number;
   taxCode?: string;
+  outOfStock?: boolean;
+  currentStock?: number | null;
   variants?: Array<{
     id: string;
     name: string;
     price: number;
+    outOfStock?: boolean;
+    currentStock?: number | null;
   }>;
 }
 

@@ -225,16 +225,22 @@ export function App() {
     item: MenuItem,
     qtyDelta = 1,
     itemNote?: string,
-    variant?: { id: string; name: string; price: number },
+    variant?: { id: string; name: string; price: number; outOfStock?: boolean },
     selectedVariants?: any
   ) => {
+    // Guard against adding out-of-stock items
+    if (item.outOfStock && !variant && (!selectedVariants || selectedVariants.length === 0)) {
+      return;
+    }
+
     setCart((prev) => {
       let nextCart = { ...prev };
 
       // Case 1: Array of { variant, qty } where each variant has its own quantity
       if (Array.isArray(selectedVariants) && selectedVariants.length > 0 && selectedVariants[0].variant) {
-        selectedVariants.forEach((entry: { variant: { id: string; name: string; price: number }; qty: number }) => {
+        selectedVariants.forEach((entry: { variant: { id: string; name: string; price: number; outOfStock?: boolean }; qty: number }) => {
           const v = entry.variant;
+          if (v.outOfStock) return;
           const vQty = entry.qty || 1;
           const cartItemId = `${item.id}-${v.id}`;
           const current = nextCart[cartItemId];
@@ -356,16 +362,6 @@ export function App() {
 
   const specialPromos = useMemo(() => {
     return menu.slice(0, 4);
-  }, [menu]);
-
-  // Dish count per category
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { All: menu.length };
-    menu.forEach((item) => {
-      const c = item.category || 'General';
-      counts[c] = (counts[c] || 0) + 1;
-    });
-    return counts;
   }, [menu]);
 
   // ── 6. Order Submission ────────────────────────────────────
@@ -651,28 +647,18 @@ export function App() {
                 <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 py-2 sticky top-[0px] bg-white/95 backdrop-blur-md z-20 border-b border-slate-100 shadow-2xs">
                   {categories.map((cat) => {
                     const isActive = activeCategory === cat;
-                    const count = categoryCounts[cat] || 0;
 
                     return (
                       <button
                         key={cat}
                         onClick={() => setActiveCategory(cat)}
-                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all duration-200 active:scale-95 shrink-0 border ${
+                        className={`px-4 py-1.5 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all duration-200 active:scale-95 shrink-0 border ${
                           isActive
                             ? 'bg-orange-600 text-white border-orange-600 shadow-md shadow-orange-600/30'
                             : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200/80 shadow-2xs'
                         }`}
                       >
-                        <span>{cat}</span>
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold transition-colors ${
-                            isActive
-                              ? 'bg-white/25 text-white'
-                              : 'bg-slate-200/80 text-slate-600'
-                          }`}
-                        >
-                          {count}
-                        </span>
+                        {cat}
                       </button>
                     );
                   })}
