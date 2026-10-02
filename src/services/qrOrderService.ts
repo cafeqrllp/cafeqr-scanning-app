@@ -73,6 +73,8 @@ export interface TableSessionInfo {
   taxDefaultId?: string;
   inventoryEnabled?: boolean;
   loyaltyEnabled?: boolean;
+  status?: string;
+  message?: string;
   error?: string;
   isSubscriptionError?: boolean;
 }

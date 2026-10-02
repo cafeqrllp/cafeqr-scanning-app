@@ -100,6 +100,19 @@ export function App() {
     try {
       const session = await qrOrderService.fetchTableSession(cId, oId, tId);
       if (session && session.found) {
+        const statusUpper = (session.status || '').toUpperCase();
+        if (statusUpper === 'MAINTENANCE' || statusUpper === 'HOLD' || statusUpper === 'RESERVED') {
+          setError(
+            statusUpper === 'RESERVED'
+              ? 'This table is currently reserved. Please contact restaurant staff.'
+              : 'This table is currently on hold / maintenance. Please contact restaurant staff or choose another table.'
+          );
+          setTableInfo(null);
+          setActiveOrder(null);
+          setLoading(false);
+          return;
+        }
+
         setTableInfo(session);
         setActiveOrder(session.activeOrder || null);
         localStorage.setItem(
@@ -107,7 +120,7 @@ export function App() {
           JSON.stringify({ clientId: cId, orgId: oId, tableId: tId })
         );
       } else {
-        setError(session?.error || 'Invalid Table QR Code or table not found.');
+        setError(session?.message || session?.error || 'Invalid Table QR Code or table not found.');
         setTableInfo(null);
         setActiveOrder(null);
         setLoading(false);
@@ -137,6 +150,18 @@ export function App() {
     try {
       const session = await qrOrderService.fetchTableSession(cId, oId, tId);
       if (session && session.found) {
+        const statusUpper = (session.status || '').toUpperCase();
+        if (statusUpper === 'MAINTENANCE' || statusUpper === 'HOLD' || statusUpper === 'RESERVED') {
+          setError(
+            statusUpper === 'RESERVED'
+              ? 'This table is currently reserved. Please contact restaurant staff.'
+              : 'This table is currently on hold / maintenance. Please contact restaurant staff or choose another table.'
+          );
+          setTableInfo(null);
+          setActiveOrder(null);
+          return;
+        }
+
         setTableInfo((prev) => (prev ? { ...prev, ...session } : session));
         const newActiveOrder = session.activeOrder || null;
 
@@ -464,6 +489,8 @@ export function App() {
             <h2 className="text-base font-extrabold text-slate-900">
               {error.toLowerCase().includes('subscription')
                 ? 'Subscription Notice'
+                : error.toLowerCase().includes('hold') || error.toLowerCase().includes('maintenance') || error.toLowerCase().includes('reserved') || error.toLowerCase().includes('inactive')
+                ? 'Table Unavailable'
                 : error.toLowerCase().includes('network') || error.toLowerCase().includes('connect')
                 ? 'Connection Error'
                 : 'Table Not Found'}
