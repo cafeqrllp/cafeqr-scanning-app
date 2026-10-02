@@ -28,11 +28,11 @@ const getApiBase = (): string => {
       return envUrl;
     }
 
-    // Otherwise, point to the deployed production/test backend
-    return 'https://app.cafeqr.in/api';
+    // Otherwise, point to the deployed test server backend
+    return 'https://test-api.cafeqr.in/api';
   }
 
-  return envUrl || 'https://app.cafeqr.in/api';
+  return envUrl || 'https://test-api.cafeqr.in/api';
 };
 
 const api: AxiosInstance = axios.create({
