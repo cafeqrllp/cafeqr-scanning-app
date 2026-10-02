@@ -1,696 +1,780 @@
-import { useEffect, useState } from 'react';
-import Lenis from '@studio-freight/lenis';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  ChevronRight,
-  Users2,
-  Wifi,
-  MapPin,
-  ShoppingBag,
-  Smartphone,
-  Printer,
-  BarChart3,
-  UtensilsCrossed,
-  Truck,
-  Check,
-  Star,
-  Shield
-} from 'lucide-react';
-import CheckoutModal from './components/CheckoutModal';
-import FAQ from './components/FAQ';
-import Terms from './pages/Terms';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Search, X, UtensilsCrossed, AlertTriangle, ArrowRight, Loader2, Sparkles } from 'lucide-react';
+import qrOrderService, {
+  type TableSessionInfo,
+  type MenuItem,
+  type ActiveOrder,
+  type CustomerAuth,
+} from './services/qrOrderService';
+import TableBanner from './components/TableBanner';
+import ActiveTabDrawer from './components/ActiveTabDrawer';
+import MenuItemCard, { checkHasVariants } from './components/MenuItemCard';
+import ItemDetailModal from './components/ItemDetailModal';
+import CartView from './components/CartView';
+import OrderSuccessModal from './components/OrderSuccessModal';
+import ManualTableEntry from './components/ManualTableEntry';
+import CustomerLoginModal from './components/CustomerLoginModal';
+import LiveOrderBanner from './components/LiveOrderBanner';
 
-// ── Pricing Plans ─────────────────────────────────────────────────────────────
-
-interface PricingPlan {
-  id: string;
-  name: string;
-  price: number;
-  originalPrice?: number;
-  printer?: string;
-  printerSize?: string;
-  badge?: string;
-  bestFor: string;
-  features: string[];
-  highlight?: boolean;
+interface CartItem extends MenuItem {
+  qty: number;
+  itemNote?: string;
+  rawProductId?: string;
+  variantId?: string;
+  variantName?: string;
 }
 
-const pricingPlans: PricingPlan[] = [
-  {
-    id: 'STARTER',
-    name: 'Starter Kit',
-    price: 4999,
-    originalPrice: 5998,
-    printer: 'Hoin 58mm Bluetooth Printer',
-    printerSize: '2-inch',
-    bestFor: 'Tea shops, juice stalls, food carts',
-    features: [
-      'Portable 58mm Bluetooth Printer',
-      'CafeQR POS — 1 Year Core License',
-      'Billing, QR Ordering & Reports',
-      'Free menu setup & onboarding',
-      'Optional ERP add-ons available',
-    ],
-  },
-  {
-    id: 'PRO',
-    name: 'Pro Kit',
-    price: 7999,
-    originalPrice: 8898,
-    printer: 'SHREYANS 80mm Bluetooth Printer',
-    printerSize: '3-inch',
-    badge: 'MOST POPULAR',
-    bestFor: 'Restaurants, cafes, bakeries, grocery stores',
-    highlight: true,
-    features: [
-      'Professional 80mm Bluetooth Printer',
-      'CafeQR POS — 1 Year Core License',
-      'Billing, QR Ordering & Reports',
-      'Free menu setup & onboarding',
-      'Priority support & ERP add-on options',
-    ],
-  },
-  {
-    id: 'SOFTWARE_ONLY',
-    name: 'Software Only',
-    price: 2499,
-    bestFor: 'Already have a Bluetooth printer?',
-    features: [
-      'CafeQR POS — 1 Year Core License',
-      'Billing, QR Ordering & Reports',
-      'Free menu setup & onboarding',
-      'Standard renewal at ₹999/year',
-      'Optional ERP add-ons available',
-    ],
-  },
-];
+export function App() {
+  // ── 1. Route / URL Resolution ──────────────────────────────
+  const [routeParams, setRouteParams] = useState<{
+    clientId: string;
+    orgId: string;
+    tableId: string;
+  }>(() => {
+    if (typeof window === 'undefined') return { clientId: '', orgId: '', tableId: '' };
 
-// ── Features Grid ─────────────────────────────────────────────────────────────
-
-const features = [
-  { icon: Smartphone, title: 'Works on Any Device', desc: 'Android tablets, phones, or desktop browsers — your POS runs everywhere.', color: 'bg-blue-50 text-blue-600 border-blue-100/50' },
-  { icon: Printer, title: 'Bluetooth Printing', desc: 'Print receipts instantly via any Bluetooth thermal printer.', color: 'bg-emerald-50 text-emerald-600 border-emerald-100/50' },
-  { icon: BarChart3, title: 'Sales & Reports', desc: 'Daily, weekly, monthly sales analytics with export to Excel.', color: 'bg-violet-50 text-violet-600 border-violet-100/50' },
-  { icon: UtensilsCrossed, title: 'Kitchen Display (KOT)', desc: 'Orders go straight to the kitchen screen — no more paper tickets.', color: 'bg-rose-50 text-rose-600 border-rose-100/50' },
-  { icon: Truck, title: 'Online Delivery', desc: 'Accept delivery orders with your own branded customer website.', color: 'bg-amber-50 text-amber-600 border-amber-100/50' },
-  { icon: Users2, title: 'Multi-Branch & Staff', desc: 'Manage multiple outlets, roles, and permissions from one dashboard.', color: 'bg-indigo-50 text-indigo-600 border-indigo-100/50' },
-];
-
-// ── POS Login URL (Environment-Aware) ──────────────────────────────────────────
-
-const getPosLoginUrl = (): string => {
-  if (typeof window !== 'undefined') {
-    const envUrl = (import.meta as any).env?.VITE_POS_LOGIN_URL;
-    if (envUrl) return envUrl;
-    const hostname = window.location.hostname.toLowerCase();
-    if (hostname.includes('test') || hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'https://cafe-test-qr-frontend.vercel.app/login';
+    // 1. Check query parameters: ?clientId=...&orgId=...&tableId=...
+    const urlParams = new URLSearchParams(window.location.search);
+    const qClient = urlParams.get('clientId');
+    const qOrg = urlParams.get('orgId') || 'null';
+    const qTable = urlParams.get('tableId');
+    if (qClient && qTable) {
+      return { clientId: qClient, orgId: qOrg, tableId: qTable };
     }
-    return 'https://cafeqr-frontend.pages.dev/login/';
-  }
-  return 'https://cafeqr-frontend.pages.dev/login/';
-};
 
-const getBackendApiUrl = (): string => {
-  if (typeof window !== 'undefined') {
-    const envUrl = (import.meta as any).env?.VITE_BACKEND_API_URL;
-    if (envUrl) return envUrl;
-    const hostname = window.location.hostname.toLowerCase();
-    if (hostname.includes('test') || hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'https://test-api.cafeqr.in';
+    // 2. Check path: /menu/:clientId/:orgId/:tableId or /:clientId/:orgId/:tableId
+    const pathname = window.location.pathname.replace(/^\/+|\/+$/g, '');
+    const parts = pathname.split('/');
+    if (parts[0] === 'menu' && parts.length >= 4) {
+      return { clientId: parts[1], orgId: parts[2], tableId: parts[3] };
+    } else if (parts.length === 3 && parts[0] !== 'menu') {
+      return { clientId: parts[0], orgId: parts[1], tableId: parts[2] };
     }
-    return 'https://app.cafeqr.in';
-  }
-  return 'https://app.cafeqr.in';
-};
 
-function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'terms'>('home');
-  const [activeApp, setActiveApp] = useState<'pos' | 'delivery'>('pos');
-  const [posLoginUrl, setPosLoginUrl] = useState<string>('https://cafeqr-frontend.pages.dev/login/');
-  const [backendApiUrl, setBackendApiUrl] = useState<string>('https://api.cafeqr.in');
-  const [checkoutPlan, setCheckoutPlan] = useState<PricingPlan | null>(null);
+    // 3. Fallback to localStorage saved session if any
+    const saved = localStorage.getItem('last_qr_table_session');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
 
-  useEffect(() => {
-    setPosLoginUrl(getPosLoginUrl());
-    setBackendApiUrl(getBackendApiUrl());
+    return { clientId: '', orgId: '', tableId: '' };
+  });
 
-    const checkRoute = () => {
-      const hash = window.location.hash.toLowerCase();
-      const path = window.location.pathname.toLowerCase();
-      if (hash === '#terms' || path === '/terms') {
-        setCurrentView('terms');
+  // ── 2. Data State ──────────────────────────────────────────
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [tableInfo, setTableInfo] = useState<TableSessionInfo | null>(null);
+  const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
+  const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [categories, setCategories] = useState<string[]>(['All']);
+  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [search, setSearch] = useState<string>('');
+
+  // ── 3. Cart & Modal State ──────────────────────────────────
+  const [cart, setCart] = useState<Record<string, CartItem>>({});
+  const [currentView, setCurrentView] = useState<'menu' | 'cart'>('menu');
+  const [isActiveTabOpen, setIsActiveTabOpen] = useState(false);
+  const [selectedItemForDetail, setSelectedItemForDetail] = useState<MenuItem | null>(null);
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [orderResult, setOrderResult] = useState<any>(null);
+
+  // Customer Authentication state (persisted in localStorage)
+  const [customer, setCustomer] = useState<CustomerAuth | null>(() => {
+    try {
+      const saved = localStorage.getItem('qr_customer_auth');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // ── 4. Load Table Session & Menu Data ──────────────────────
+  const loadData = useCallback(async (cId: string, oId: string, tId: string) => {
+    if (!cId || !tId) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const session = await qrOrderService.fetchTableSession(cId, oId, tId);
+      if (session && session.found) {
+        setTableInfo(session);
+        setActiveOrder(session.activeOrder || null);
+        localStorage.setItem(
+          'last_qr_table_session',
+          JSON.stringify({ clientId: cId, orgId: oId, tableId: tId })
+        );
       } else {
-        setCurrentView('home');
+        setError(session?.error || 'Invalid Table QR Code or table not found.');
+        setTableInfo(null);
+        setActiveOrder(null);
+        setLoading(false);
+        return;
+      }
+
+      const menuData = await qrOrderService.fetchMenu(cId, oId);
+      const filteredMenu = menuData.filter(
+        (item) => !item.isIngredient && item.productType?.toUpperCase() !== 'INGREDIENT'
+      );
+      setMenu(filteredMenu);
+
+      const cats = Array.from(new Set(filteredMenu.map((item) => item.category || 'General').filter(Boolean)));
+      setCategories(['All', ...cats]);
+    } catch (err: any) {
+      console.error('Failed to load table session', err);
+      setError(err.message || 'Unable to connect to restaurant server. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // ── 4b. Real-Time Table & Active Order Sync ─────────────────
+  const syncTableSession = useCallback(async (cId: string, oId: string, tId: string) => {
+    if (!cId || !tId) return;
+    try {
+      const session = await qrOrderService.fetchTableSession(cId, oId, tId);
+      if (session && session.found) {
+        setTableInfo((prev) => (prev ? { ...prev, ...session } : session));
+        const newActiveOrder = session.activeOrder || null;
+
+        setActiveOrder((prevActiveOrder) => {
+          // If active order was settled or cleared by the restaurant
+          if (!newActiveOrder) {
+            if (prevActiveOrder !== null) {
+              setIsActiveTabOpen(false); // Close bill drawer if open
+            }
+            return null;
+          }
+
+          // If active order exists, update whenever ANY detail from restaurant changes
+          // (items added/removed, quantities, discounts, prices, status, kitchen note, etc.)
+          if (!prevActiveOrder || JSON.stringify(prevActiveOrder) !== JSON.stringify(newActiveOrder)) {
+            return newActiveOrder;
+          }
+
+          return prevActiveOrder;
+        });
+      }
+    } catch (err) {
+      // Non-blocking background sync heartbeat
+      console.warn('Real-time table sync heartbeat blip', err);
+    }
+  }, []);
+
+  // Poll for real-time table & order changes every 2.5 seconds (and immediately on tab focus)
+  useEffect(() => {
+    const { clientId, orgId, tableId } = routeParams;
+    if (!clientId || !tableId) return;
+
+    let isPolling = false;
+    const poll = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (isPolling) return;
+      isPolling = true;
+      try {
+        await syncTableSession(clientId, orgId, tableId);
+      } finally {
+        isPolling = false;
       }
     };
 
-    checkRoute();
-    window.addEventListener('hashchange', checkRoute);
-    window.addEventListener('popstate', checkRoute);
-    return () => {
-      window.removeEventListener('hashchange', checkRoute);
-      window.removeEventListener('popstate', checkRoute);
+    // Fast 2.5s heartbeat for real-time UI updates
+    const intervalId = setInterval(poll, 2500);
+
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        poll();
+      }
     };
-  }, []);
 
-  // Initialize Lenis Smooth Scroll
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleVisibilityOrFocus);
+    }
+
+    return () => {
+      clearInterval(intervalId);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleVisibilityOrFocus);
+      }
+    };
+  }, [routeParams, syncTableSession]);
+
   useEffect(() => {
-    if (currentView !== 'home') return;
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      orientation: 'vertical',
-      gestureOrientation: 'vertical',
-      wheelMultiplier: 1,
-      touchMultiplier: 2,
-      infinite: false,
+    if (routeParams.clientId && routeParams.tableId) {
+      loadData(routeParams.clientId, routeParams.orgId, routeParams.tableId);
+    }
+  }, [routeParams, loadData]);
+
+  // Prompt login screen on first scan if not already logged in
+  useEffect(() => {
+    if (tableInfo && !customer) {
+      setShowAuthModal(true);
+    }
+  }, [tableInfo, customer]);
+
+  // ── 5. Cart Operations ─────────────────────────────────────
+  const handleAddToCart = (
+    item: MenuItem,
+    qtyDelta = 1,
+    itemNote?: string,
+    variant?: { id: string; name: string; price: number },
+    selectedVariants?: any
+  ) => {
+    setCart((prev) => {
+      let nextCart = { ...prev };
+
+      // Case 1: Array of { variant, qty } where each variant has its own quantity
+      if (Array.isArray(selectedVariants) && selectedVariants.length > 0 && selectedVariants[0].variant) {
+        selectedVariants.forEach((entry: { variant: { id: string; name: string; price: number }; qty: number }) => {
+          const v = entry.variant;
+          const vQty = entry.qty || 1;
+          const cartItemId = `${item.id}-${v.id}`;
+          const current = nextCart[cartItemId];
+          const newQty = current ? current.qty + vQty : vQty;
+          const finalName = `${item.name} (${v.name})`;
+
+          nextCart[cartItemId] = {
+            ...item,
+            id: cartItemId,
+            rawProductId: item.id,
+            variantId: v.id,
+            variantName: finalName,
+            name: finalName,
+            price: v.price,
+            qty: newQty,
+            itemNote: itemNote !== undefined ? itemNote : current?.itemNote,
+          };
+        });
+        return nextCart;
+      }
+
+      // Case 2: Array of variants (single combined item)
+      if (Array.isArray(selectedVariants) && selectedVariants.length > 0) {
+        const variantIds = selectedVariants.map((v: any) => v.id).sort().join('-');
+        const cartItemId = `${item.id}-${variantIds}`;
+        const finalPrice = selectedVariants.reduce((sum: number, v: any) => sum + v.price, 0);
+        const variantNames = selectedVariants.map((v: any) => v.name).join(', ');
+        const finalName = `${item.name} (${variantNames})`;
+        const current = nextCart[cartItemId];
+        const newQty = current ? current.qty + qtyDelta : qtyDelta;
+
+        nextCart[cartItemId] = {
+          ...item,
+          id: cartItemId,
+          rawProductId: item.id,
+          variantId: selectedVariants[0]?.id,
+          variantName: finalName,
+          name: finalName,
+          price: finalPrice,
+          qty: newQty,
+          itemNote: itemNote !== undefined ? itemNote : current?.itemNote,
+        };
+        return nextCart;
+      }
+
+      // Case 3: Single variant
+      if (variant) {
+        const cartItemId = `${item.id}-${variant.id}`;
+        const current = nextCart[cartItemId];
+        const newQty = current ? current.qty + qtyDelta : qtyDelta;
+        const finalName = `${item.name} (${variant.name})`;
+
+        nextCart[cartItemId] = {
+          ...item,
+          id: cartItemId,
+          rawProductId: item.id,
+          variantId: variant.id,
+          variantName: finalName,
+          name: finalName,
+          price: variant.price,
+          qty: newQty,
+          itemNote: itemNote !== undefined ? itemNote : current?.itemNote,
+        };
+        return nextCart;
+      }
+
+      // Case 4: Standard non-variant product
+      const current = nextCart[item.id];
+      const newQty = current ? current.qty + qtyDelta : qtyDelta;
+      nextCart[item.id] = {
+        ...item,
+        id: item.id,
+        rawProductId: item.id,
+        qty: newQty,
+        itemNote: itemNote !== undefined ? itemNote : current?.itemNote,
+      };
+      return nextCart;
     });
+  };
 
-    if (checkoutPlan) {
-      lenis.stop();
-    } else {
-      lenis.start();
+  const handleUpdateQty = (productId: string, delta: number) => {
+    setCart((prev) => {
+      const current = prev[productId];
+      if (!current) return prev;
+      const newQty = current.qty + delta;
+      if (newQty <= 0) {
+        const copy = { ...prev };
+        delete copy[productId];
+        return copy;
+      }
+      return {
+        ...prev,
+        [productId]: {
+          ...current,
+          qty: newQty,
+        },
+      };
+    });
+  };
+
+  const handleRemoveItem = (productId: string) => {
+    setCart((prev) => {
+      const copy = { ...prev };
+      delete copy[productId];
+      return copy;
+    });
+  };
+
+  // Derived cart totals
+  const cartItems = useMemo(() => Object.values(cart).filter((i) => i.qty > 0), [cart]);
+  const cartTotalAmount = useMemo(
+    () => cartItems.reduce((sum, item) => sum + item.price * item.qty, 0),
+    [cartItems]
+  );
+  const cartItemCount = useMemo(
+    () => cartItems.reduce((sum, item) => sum + item.qty, 0),
+    [cartItems]
+  );
+
+  const specialPromos = useMemo(() => {
+    return menu.slice(0, 4);
+  }, [menu]);
+
+  // Dish count per category
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { All: menu.length };
+    menu.forEach((item) => {
+      const c = item.category || 'General';
+      counts[c] = (counts[c] || 0) + 1;
+    });
+    return counts;
+  }, [menu]);
+
+  // ── 6. Order Submission ────────────────────────────────────
+  const handleSubmitOrder = async (formData: {
+    customerName: string;
+    customerPhone: string;
+    customerNote: string;
+    paymentMethod: string;
+  }) => {
+    if (cartItems.length === 0 || !tableInfo) return;
+
+    setSubmittingOrder(true);
+    try {
+      const payload = {
+        tableId: tableInfo.tableId,
+        tableNumber: tableInfo.tableNumber,
+        customerId: customer?.id || localStorage.getItem('qr_customer_id') || undefined,
+        customerName: customer?.name || formData.customerName || localStorage.getItem('qr_customer_name') || undefined,
+        customerPhone: customer?.phone || formData.customerPhone || localStorage.getItem('qr_customer_phone') || undefined,
+        customerEmail: customer?.email || localStorage.getItem('qr_customer_email') || undefined,
+        customerNote: formData.customerNote,
+        paymentMethod: formData.paymentMethod,
+        items: cartItems.map((item) => ({
+          productId: item.rawProductId || item.id,
+          variantId: item.variantId,
+          quantity: item.qty,
+          name: item.name,
+          price: item.price,
+          category: item.category,
+        })),
+      };
+
+      const result = await qrOrderService.submitOrder(
+        routeParams.clientId,
+        routeParams.orgId,
+        payload
+      );
+
+      setCart({});
+      setCurrentView('menu');
+      setOrderResult(result);
+
+      await loadData(routeParams.clientId, routeParams.orgId, routeParams.tableId);
+    } catch (err: any) {
+      throw err;
+    } finally {
+      setSubmittingOrder(false);
     }
+  };
 
-    function raf(time: number) {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
+  // ── 7. Filtered Menu Items ─────────────────────────────────
+  const filteredMenu = useMemo(() => {
+    return menu.filter((item) => {
+      const matchesCat =
+        activeCategory === 'All' ||
+        (item.category || 'General').toLowerCase() === activeCategory.toLowerCase();
+      const matchesSearch =
+        !search.trim() ||
+        item.name.toLowerCase().includes(search.toLowerCase()) ||
+        (item.description && item.description.toLowerCase().includes(search.toLowerCase()));
+      return matchesCat && matchesSearch;
+    });
+  }, [menu, activeCategory, search]);
 
-    requestAnimationFrame(raf);
-    return () => { lenis.destroy(); };
-  }, [currentView, checkoutPlan]);
-
-  if (currentView === 'terms') {
+  // ── 8. Render: No table selected (Manual table entry) ───────
+  if (!routeParams.clientId || !routeParams.tableId) {
     return (
-      <Terms
-        onBack={() => {
-          window.location.hash = '';
-          setCurrentView('home');
-          window.scrollTo(0, 0);
+      <ManualTableEntry
+        onSelectTable={(c, o, t) => {
+          setRouteParams({ clientId: c, orgId: o, tableId: t });
         }}
-        posLoginUrl={posLoginUrl}
+        error={error || undefined}
       />
     );
   }
 
+  // ── 9. Render: Loading ─────────────────────────────────────
+  if (loading && !tableInfo) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center mb-4 shadow-xs">
+          <Loader2 className="w-6 h-6 animate-spin" />
+        </div>
+        <h2 className="text-base font-extrabold text-slate-900">Loading Menu...</h2>
+        <p className="text-xs text-slate-500 mt-1 max-w-xs">Connecting to live table session</p>
+      </div>
+    );
+  }
+
+  // ── 10. Render: Error ──────────────────────────────────────
+  if (error && !tableInfo) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-lg border border-slate-100 text-center space-y-4">
+          <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900">Table Not Found</h2>
+            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{error}</p>
+          </div>
+          <button
+            onClick={() => setRouteParams({ clientId: '', orgId: '', tableId: '' })}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-2xl text-xs transition shadow-sm active:scale-95"
+          >
+            Scan Another Table
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('qr_customer_auth');
+    localStorage.removeItem('qr_customer_name');
+    localStorage.removeItem('qr_customer_phone');
+    localStorage.removeItem('qr_customer_email');
+    setCustomer(null);
+    setShowAuthModal(true);
+  };
+
   return (
-    <div className="relative min-h-screen bg-zinc-50 text-zinc-900 overflow-hidden font-sans">
+    <div className="min-h-screen bg-slate-100/80 sm:py-6">
+      {/* Mobile Phone Mockup Frame (Screen 1 & Screen 3) */}
+      <div
+        className={`max-w-md mx-auto min-h-screen sm:min-h-[92vh] sm:rounded-3xl bg-white shadow-xl border-x sm:border border-slate-200/80 flex flex-col relative overflow-x-hidden ${
+          currentView === 'cart' ? 'pb-4' : 'pb-28'
+        }`}
+      >
+        {currentView === 'cart' ? (
+          /* Screen 3: In-page Order / Cart view (Pesanan Kamu) */
+          <CartView
+            onBackToMenu={() => setCurrentView('menu')}
+            cart={cart}
+            onUpdateQty={handleUpdateQty}
+            onRemoveItem={handleRemoveItem}
+            tableNumber={tableInfo?.tableNumber}
+            isAppendingToTab={Boolean(activeOrder)}
+            activeOrder={activeOrder}
+            onSubmitOrder={handleSubmitOrder}
+            submitting={submittingOrder}
+            onlinePaymentEnabled={tableInfo?.onlinePaymentEnabled}
+            tableInfo={tableInfo}
+          />
+        ) : (
+          <>
+            {/* Top Restaurant & Table Bar */}
+            {tableInfo && (
+              <TableBanner
+                tableInfo={tableInfo}
+                cartItemCount={cartItemCount}
+                customer={customer}
+                onOpenAuth={() => setShowAuthModal(true)}
+                onLogout={handleLogout}
+                onOpenCart={() => {
+                  setCurrentView('cart');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
+            )}
 
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex justify-between items-center p-5 lg:px-8 bg-white/50 backdrop-blur-2xl border-b border-white/40 shadow-[0_4px_30px_rgba(0,0,0,0.02)]">
-        <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Cafe QR Logo" className="w-10 h-10 object-contain rounded-md" />
-          <span className="text-xl font-bold tracking-tight text-zinc-900">Cafe QR ERP</span>
-        </div>
-        <div className="flex items-center gap-6">
-          <a
-            href={posLoginUrl}
-            className="px-6 py-2.5 bg-zinc-900/90 backdrop-blur-md text-white rounded-full font-semibold hover:bg-zinc-800 transition-colors shadow-lg text-sm"
-          >
-            POS Login
-          </a>
-        </div>
-      </nav>
+            <div className="p-4 space-y-4 flex-1">
+              {/* Live Order Banner (shown if an active order is present on the table) */}
+              {activeOrder && (
+                <LiveOrderBanner
+                  activeOrder={activeOrder}
+                  onViewOrder={() => setIsActiveTabOpen(true)}
+                />
+              )}
 
-      {/* ── Hero Section ───────────────────────────────────────────── */}
-      <section className="relative min-h-[100vh] flex flex-col justify-center items-center px-4 sm:px-6 lg:px-8 pt-20">
-        <div className="relative z-10 text-center max-w-4xl mx-auto pointer-events-none select-none flex flex-col items-center">
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="mb-6 px-4 py-1.5 bg-white/70 backdrop-blur-md border border-white/50 shadow-sm rounded-full text-xs font-bold uppercase tracking-wider text-primary"
-          >
-            ✦ Complete POS Kit — Software + Printer
-          </motion.div>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
-            className="text-4xl sm:text-6xl md:text-7xl lg:text-[5.5rem] font-extrabold tracking-tight leading-[1.1] text-zinc-900 drop-shadow-sm px-2"
-          >
-            Start Billing<br />
-            <span className="text-primary bg-none">In 5 Minutes.</span>
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
-            className="mt-6 text-lg sm:text-xl md:text-2xl text-zinc-600 max-w-2xl mx-auto leading-relaxed drop-shadow-sm"
-          >
-            Get a ready-to-use POS system with a Bluetooth printer. All features included — billing, inventory, KOT, delivery, CRM, and more.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut", delay: 0.3 }}
-            className="mt-10 flex flex-col sm:flex-row gap-4 pointer-events-auto"
-          >
-            <a
-              href="#pricing"
-              className="px-8 py-4 bg-primary text-white rounded-full font-bold flex items-center justify-center gap-2 hover:bg-orange-600 transition-all shadow-xl shadow-orange-500/20 hover:shadow-orange-500/30 cursor-pointer"
-            >
-              See Pricing <ChevronRight className="w-4 h-4" />
-            </a>
-            <a
-              href={posLoginUrl}
-              className="px-8 py-4 bg-white border border-zinc-200 text-zinc-700 rounded-full font-bold flex items-center justify-center gap-2 hover:bg-zinc-50 transition-all shadow-sm cursor-pointer"
-            >
-              Already a user? Login
-            </a>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ── How It Works ───────────────────────────────────────────── */}
-      <section className="py-32 px-4 sm:px-6 lg:px-8 border-t border-white/20">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-zinc-900">
-              Up & Running in 3 Steps
-            </h2>
-            <p className="mt-4 text-zinc-600 text-lg font-medium">No complex setup. No IT team needed.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              { step: '01', title: 'Choose Your Kit', desc: 'Pick a Starter or Pro kit with a Bluetooth printer, or get software only if you already have one.', icon: '📦' },
-              { step: '02', title: 'We Set You Up', desc: 'Our team configures your menu, categories, and POS settings. You just share your details.', icon: '⚙️' },
-              { step: '03', title: 'Start Billing', desc: "Install the app, connect your printer, and start taking orders. It's that simple.", icon: '🧾' },
-            ].map((s, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: i * 0.15 }}
-                className="relative p-8 rounded-[2rem] bg-white/60 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:bg-white/80 transition-all text-center"
-              >
-                <span className="text-4xl mb-4 block">{s.icon}</span>
-                <span className="text-xs font-bold text-primary uppercase tracking-widest">Step {s.step}</span>
-                <h3 className="text-xl font-bold text-zinc-900 mt-2 mb-2">{s.title}</h3>
-                <p className="text-zinc-600 text-sm leading-relaxed">{s.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Pricing Bundles ────────────────────────────────────────── */}
-      <section id="pricing" className="py-32 px-4 sm:px-6 lg:px-8 border-t border-white/20">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-zinc-900">
-              Simple, Transparent Pricing
-            </h2>
-            <p className="mt-4 text-zinc-600 text-lg font-medium">
-              Everything included. No hidden fees. No module upsells.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch">
-            {pricingPlans.map((plan, i) => (
-              <motion.div
-                key={plan.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
-                className={`relative p-8 rounded-[2rem] border backdrop-blur-xl flex flex-col transition-all ${
-                  plan.highlight
-                    ? 'bg-zinc-900/90 border-zinc-700/50 text-white shadow-2xl scale-[1.03] ring-2 ring-primary/30'
-                    : 'bg-white/70 border-white/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)]'
-                }`}
-              >
-                {/* Badge */}
-                {plan.badge && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-white text-xs font-bold rounded-full shadow-lg shadow-orange-500/30 flex items-center gap-1.5">
-                    <Star className="w-3 h-3" /> {plan.badge}
-                  </div>
+              {/* Search Input (Screen 1 Reference) */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="What would you like to eat today?"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-9 py-2.5 text-xs bg-slate-50 border border-slate-200/70 rounded-2xl shadow-xs focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition placeholder:text-slate-400 font-medium"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 )}
+              </div>
 
-                {/* Printer Image */}
-                {plan.printer ? (
-                  <div className={`h-48 rounded-2xl flex items-center justify-center mb-6 overflow-hidden ${plan.highlight ? 'bg-zinc-800/50' : 'bg-zinc-50'}`}>
-                    <img
-                      src={plan.printerSize === '2-inch' ? '/printer-2inch.png' : '/printer-3inch.png'}
-                      alt={plan.printer}
-                      className="h-36 object-contain drop-shadow-lg"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLElement).style.display = 'none';
-                        const parent = (e.currentTarget as HTMLElement).parentElement;
-                        if (parent && !parent.querySelector('.printer-fallback')) {
-                          const div = document.createElement('div');
-                          div.className = 'printer-fallback flex flex-col items-center justify-center text-center p-4';
-                          div.innerHTML = `<span class="text-4xl">🖨️</span><span class="text-xs font-bold mt-2 ${plan.highlight ? 'text-zinc-300' : 'text-zinc-600'}">${plan.printer}</span>`;
-                          parent.appendChild(div);
-                        }
-                      }}
-                    />
+              {/* 3. Special Promo / Highlights (Screen 1 Reference: Cek Promo Spesial Hari Ini!) */}
+              {!search && activeCategory === 'All' && specialPromos.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                        Special Highlights Today!
+                      </h3>
+                      <p className="text-[10px] text-slate-400">Customer favorites and chef recommendations</p>
+                    </div>
                   </div>
-                ) : (
-                  <div className={`h-48 rounded-2xl flex flex-col items-center justify-center mb-6 overflow-hidden ${plan.highlight ? 'bg-zinc-800/50' : 'bg-zinc-50'}`}>
-                    <img
-                      src="/software-license.png"
-                      alt="Software License"
-                      className="h-28 object-contain drop-shadow-lg mb-2"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLElement).style.display = 'none';
-                        const parent = (e.currentTarget as HTMLElement).parentElement;
-                        if (parent && !parent.querySelector('.software-fallback')) {
-                          const div = document.createElement('div');
-                          div.className = 'software-fallback flex flex-col items-center justify-center text-center';
-                          div.innerHTML = `<span class="text-4xl">📱</span>`;
-                          parent.insertBefore(div, parent.firstChild);
-                        }
-                      }}
-                    />
-                    <span className={`text-xs font-bold ${plan.highlight ? 'text-zinc-400' : 'text-zinc-400'}`}>Software License Only</span>
+
+                  {/* Horizontal Scroll of Promo Mini Cards */}
+                  <div className="flex gap-2.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+                    {specialPromos.map((item) => {
+                      const imgUrl = item.imageUrl || item.image;
+                      const cartQty = cart[item.id]?.qty || 0;
+                      const price = Number(item.price || 0);
+
+                      const hasVar = checkHasVariants(item);
+                      return (
+                        <div
+                          key={`promo-${item.id}`}
+                          onClick={() => {
+                            if (hasVar) {
+                              setSelectedItemForDetail(item);
+                            } else {
+                              handleAddToCart(item);
+                            }
+                          }}
+                          className={`w-32 shrink-0 bg-slate-50 rounded-2xl p-2 border shadow-xs flex flex-col justify-between cursor-pointer active:scale-98 transition group ${
+                            cartQty > 0 ? 'border-orange-500 ring-1 ring-orange-500/20' : 'border-slate-200/70'
+                          }`}
+                        >
+                          <div className="aspect-[4/3] w-full rounded-xl overflow-hidden bg-slate-200 mb-1.5 relative">
+                            {imgUrl ? (
+                              <img
+                                src={imgUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                <UtensilsCrossed className="w-5 h-5 text-orange-200" />
+                              </div>
+                            )}
+                            <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded backdrop-blur-xs">
+                              ₹{price.toFixed(0)}
+                            </span>
+                          </div>
+
+                          <h4 className="font-extrabold text-slate-900 text-[11px] leading-tight line-clamp-1">
+                            {item.name}
+                          </h4>
+
+                          {cartQty > 0 ? (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="mt-1.5 flex items-center justify-between bg-orange-600 text-white rounded-lg px-2 py-1 shadow-xs"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateQty(item.id, -1)}
+                                className="p-0.5 hover:bg-orange-700 rounded active:scale-90 font-bold"
+                              >
+                                -
+                              </button>
+                              <span className="font-black text-[10px]">{cartQty}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleAddToCart(item)}
+                                className="p-0.5 hover:bg-orange-700 rounded active:scale-90 font-bold"
+                              >
+                                +
+                              </button>
+                            </div>
+                          ) : hasVar ? (
+                            <span className="mt-1 text-[9px] text-orange-600 font-extrabold flex items-center gap-0.5">
+                              <Sparkles className="w-2.5 h-2.5" /> Options
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Plan Name */}
-                <h3 className={`text-xl font-extrabold ${plan.highlight ? 'text-white' : 'text-zinc-900'}`}>
-                  {plan.name}
-                </h3>
-                <p className={`text-xs mt-1 mb-4 ${plan.highlight ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                  {plan.bestFor}
-                </p>
+              {/* 4. Modern Category Carousel */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 py-2 sticky top-[0px] bg-white/95 backdrop-blur-md z-20 border-b border-slate-100 shadow-2xs">
+                  {categories.map((cat) => {
+                    const isActive = activeCategory === cat;
+                    const count = categoryCounts[cat] || 0;
 
-                {/* Price */}
-                <div className="flex items-baseline gap-2 mb-6">
-                  <span className={`text-4xl font-extrabold ${plan.highlight ? 'text-white' : 'text-zinc-900'}`}>
-                    ₹{plan.price.toLocaleString('en-IN')}
-                  </span>
-                  {plan.originalPrice && (
-                    <span className={`text-sm line-through ${plan.highlight ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                      ₹{plan.originalPrice.toLocaleString('en-IN')}
-                    </span>
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => setActiveCategory(cat)}
+                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all duration-200 active:scale-95 shrink-0 border ${
+                          isActive
+                            ? 'bg-orange-600 text-white border-orange-600 shadow-md shadow-orange-600/30'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200/80 shadow-2xs'
+                        }`}
+                      >
+                        <span>{cat}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold transition-colors ${
+                            isActive
+                              ? 'bg-white/25 text-white'
+                              : 'bg-slate-200/80 text-slate-600'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* 5. 2-COLUMN GRID OF DISHES (Screen 1 Reference Bottom Grid) */}
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3 pt-1">
+                  {filteredMenu.length === 0 ? (
+                    <div className="col-span-2 bg-slate-50 rounded-2xl p-8 text-center text-slate-400 border border-slate-100">
+                      <UtensilsCrossed className="w-7 h-7 mx-auto mb-2 text-slate-300" />
+                      <p className="text-sm font-bold text-slate-700">No dishes found</p>
+                      <p className="text-xs text-slate-400 mt-1">Try another keyword or category.</p>
+                    </div>
+                  ) : (
+                    filteredMenu.map((item) => (
+                      <MenuItemCard
+                        key={item.id}
+                        item={item}
+                        cartQty={cart[item.id]?.qty || 0}
+                        onAddToCart={() => handleAddToCart(item)}
+                        onRemoveFromCart={() => handleUpdateQty(item.id, -1)}
+                        onOpenDetails={() => setSelectedItemForDetail(item)}
+                      />
+                    ))
                   )}
                 </div>
+              </div>
+            </div>
 
-                {/* Features */}
-                <ul className="space-y-3 mb-8 flex-1">
-                  {plan.features.map((f, j) => (
-                    <li key={j} className="flex items-start gap-2.5 text-sm">
-                      <Check className={`w-4 h-4 mt-0.5 shrink-0 ${plan.highlight ? 'text-primary' : 'text-emerald-500'}`} />
-                      <span className={plan.highlight ? 'text-zinc-300' : 'text-zinc-700'}>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {/* CTA */}
+            {/* 6. Floating Bottom Cart Bar (Transitions to Screen 3: Pesanan Kamu inside page) */}
+            {cartItemCount > 0 && (
+              <div className="fixed bottom-3 inset-x-0 px-4 z-40 max-w-md mx-auto pointer-events-none">
                 <button
-                  onClick={() => setCheckoutPlan(plan)}
-                  className={`w-full py-4 rounded-xl font-bold text-sm transition-all ${
-                    plan.highlight
-                      ? 'bg-primary text-white hover:bg-orange-600 shadow-lg shadow-orange-500/30'
-                      : 'bg-zinc-900 text-white hover:bg-zinc-800 shadow-md'
-                  }`}
+                  onClick={() => {
+                    setCurrentView('cart');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white rounded-2xl p-3.5 shadow-xl shadow-orange-600/35 flex items-center justify-between font-extrabold text-xs sm:text-sm transition-all transform active:scale-98 pointer-events-auto cursor-pointer"
                 >
-                  Get Started
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-6 h-6 rounded-lg bg-orange-800/80 text-white flex items-center justify-center text-[11px] font-extrabold shadow-inner">
+                      {cartItemCount}
+                    </span>
+                    <span className="tracking-wide">View Order (Pesanan Kamu)</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-extrabold text-white">₹{cartTotalAmount.toFixed(0)}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
                 </button>
-
-                {/* Warranty note */}
-                {plan.printer && (
-                  <p className={`text-[10px] mt-3 text-center ${plan.highlight ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                    <Shield className="w-3 h-3 inline mr-1" />
-                    Hardware warranty by manufacturer
-                  </p>
-                )}
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Key Features Grid ──────────────────────────────────────── */}
-      <section className="py-32 px-4 sm:px-6 lg:px-8 border-t border-white/20">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-zinc-900">
-              Everything You Need to Run Your Business
-            </h2>
-            <p className="mt-4 text-zinc-600 text-lg font-medium">
-              All features included in every plan. No module upsells, ever.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((f, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: i * 0.08 }}
-                className="p-7 rounded-[2rem] bg-white/60 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:bg-white/80 transition-all"
-              >
-                <div className={`p-3 w-fit rounded-2xl mb-5 shadow-sm border ${f.color}`}>
-                  <f.icon className="w-5 h-5" />
-                </div>
-                <h3 className="text-lg font-bold text-zinc-900 mb-1.5">{f.title}</h3>
-                <p className="text-zinc-600 text-sm leading-relaxed">{f.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Play Store Apps Section ────────────────────────────────── */}
-      <section id="apps" className="py-32 px-4 sm:px-6 lg:px-8 border-t border-white/20">
-        <div className="max-w-7xl mx-auto relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-
-            {/* Left side App Selectors */}
-            <div className="bg-white/40 p-10 rounded-[3rem] backdrop-blur-xl border border-white/50 shadow-xl">
-              <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-6 text-zinc-900">Official Mobile Suite</h2>
-              <p className="text-zinc-700 text-lg mb-10 leading-relaxed font-medium">
-                Connect and sync mobile operations directly to your main cloud database.
-              </p>
-
-              <div className="space-y-6">
-                {/* POS App Card */}
-                <div
-                  onClick={() => setActiveApp('pos')}
-                  className={`flex gap-5 items-start p-6 rounded-3xl border transition-all duration-300 cursor-pointer select-none ${
-                    activeApp === 'pos'
-                      ? 'bg-white/95 border-primary/40 shadow-[0_8px_30px_rgba(0,0,0,0.06)] scale-[1.02]'
-                      : 'bg-white/10 border-transparent hover:bg-white/40'
-                  }`}
-                >
-                  <img src="/logo-pos.png" alt="POS App Logo" className="w-16 h-16 object-contain bg-white rounded-2xl shadow-sm border border-zinc-200 p-1 shrink-0" />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xl font-bold text-zinc-900">Cafe QR POS App</h4>
-                      {activeApp === 'pos' && <span className="w-2.5 h-2.5 bg-primary rounded-full animate-pulse"></span>}
-                    </div>
-                    <p className="text-zinc-600 text-sm mt-1 mb-3">Your master terminal register. Install on Android tablets, touch displays, or hand-held devices.</p>
-                    <a
-                      href="https://play.google.com/store/apps/details?id=com.cafeqr.app"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      View on Play Store <ChevronRight className="w-4 h-4" />
-                    </a>
-                  </div>
-                </div>
-
-                {/* Delivery App Card */}
-                <div
-                  onClick={() => setActiveApp('delivery')}
-                  className={`flex gap-5 items-start p-6 rounded-3xl border transition-all duration-300 cursor-pointer select-none ${
-                    activeApp === 'delivery'
-                      ? 'bg-white/95 border-primary/40 shadow-[0_8px_30px_rgba(0,0,0,0.06)] scale-[1.02]'
-                      : 'bg-white/10 border-transparent hover:bg-white/40'
-                  }`}
-                >
-                  <img src="/logo-delivery.png" alt="Delivery App Logo" className="w-16 h-16 object-contain bg-white rounded-2xl shadow-sm border border-zinc-200 p-1 shrink-0" />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xl font-bold text-zinc-900">Cafe QR Delivery App</h4>
-                      {activeApp === 'delivery' && <span className="w-2.5 h-2.5 bg-primary rounded-full animate-pulse"></span>}
-                    </div>
-                    <p className="text-zinc-600 text-sm mt-1 mb-3">Driver tracking and dispatch system for fleet management.</p>
-                    <a
-                      href="https://play.google.com/store/apps/details?id=com.cafeqr.delivery"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      View on Play Store <ChevronRight className="w-4 h-4" />
-                    </a>
-                  </div>
-                </div>
               </div>
-            </div>
+            )}
+          </>
+        )}
 
-            {/* Right side Phone Simulator */}
-            <div className="relative flex justify-center items-center">
-              <div className="absolute w-72 h-72 bg-primary/10 rounded-full blur-[100px] -z-10"></div>
-
-              <div className="w-full max-w-[325px] aspect-[9/19.2] bg-zinc-950 rounded-[3.2rem] p-3 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.15)] relative border-4 border-zinc-900/90 ring-1 ring-zinc-800">
-                <div className="absolute top-24 -left-1.5 w-1 h-12 bg-zinc-800 rounded-l-md border-l border-zinc-700"></div>
-                <div className="absolute top-38 -left-1.5 w-1 h-12 bg-zinc-800 rounded-l-md border-l border-zinc-700"></div>
-                <div className="absolute top-30 -right-1.5 w-1 h-16 bg-zinc-800 rounded-r-md border-r border-zinc-700"></div>
-
-                <div className="w-full h-full bg-zinc-900 rounded-[2.5rem] overflow-hidden relative flex flex-col justify-between border border-zinc-800 shadow-[inset_0_0_10px_rgba(0,0,0,0.8)]">
-                  <div className="absolute top-3.5 left-1/2 -translate-x-1/2 w-28 h-6.5 bg-black rounded-full z-30 flex items-center justify-between px-3 text-[9px]">
-                    <div className="w-2 h-2 bg-zinc-900 rounded-full border border-zinc-800/80"></div>
-                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                  </div>
-
-                  <div className="flex justify-between items-center px-6 pt-4 text-[10px] font-bold text-zinc-900 z-20 mix-blend-difference select-none pointer-events-none">
-                    <span className="text-white">11:40 AM</span>
-                    <div className="flex gap-1.5 text-white items-center">
-                      <Wifi className="w-3 h-3" />
-                      <span>🔋</span>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 w-full bg-zinc-50 flex flex-col justify-between p-4 pt-8 overflow-hidden relative">
-                    <AnimatePresence mode="wait">
-                      {activeApp === 'pos' ? (
-                        <motion.div key="pos-screen" initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 30 }} transition={{ duration: 0.25, ease: "easeInOut" }} className="w-full h-full flex flex-col justify-between pt-4">
-                          <div>
-                            <div className="flex items-center gap-3 mb-6 bg-white p-3 rounded-2xl border border-zinc-200/50 shadow-sm">
-                              <img src="/logo-pos.png" alt="POS App Logo" className="w-10 h-10 object-contain" />
-                              <div>
-                                <h5 className="font-extrabold text-zinc-900 text-sm leading-tight">Cafe QR POS</h5>
-                                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full mt-0.5 border border-emerald-100">
-                                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                                  ERP Sync Active
-                                </span>
-                              </div>
-                            </div>
-                            <div className="space-y-2.5">
-                              <h6 className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider px-1">Active Ticket</h6>
-                              <div className="bg-white rounded-2xl p-3.5 border border-zinc-200/50 shadow-sm space-y-3">
-                                <div className="flex justify-between text-xs font-semibold text-zinc-800"><span>2x Cappuccino</span><span className="font-bold text-zinc-900">₹360</span></div>
-                                <div className="flex justify-between text-xs font-semibold text-zinc-800"><span>1x Paneer Tikka Roll</span><span className="font-bold text-zinc-900">₹150</span></div>
-                                <div className="flex justify-between text-xs font-semibold text-zinc-800 border-b border-dashed border-zinc-200 pb-2"><span>1x Choco Lava Cake</span><span className="font-bold text-zinc-900">₹90</span></div>
-                                <div className="flex justify-between text-sm font-bold text-zinc-900 pt-1"><span>Total Amount</span><span className="text-primary font-extrabold text-base">₹600</span></div>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="space-y-2.5">
-                            <button className="w-full py-3.5 bg-primary text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-orange-600 transition-colors shadow-md">
-                              <ShoppingBag className="w-4 h-4" /> Print Bill & Checkout
-                            </button>
-                            <span className="text-[9px] text-zinc-400 block text-center font-semibold">Registered: Terminal Counter #1</span>
-                          </div>
-                        </motion.div>
-                      ) : (
-                        <motion.div key="delivery-screen" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.25, ease: "easeInOut" }} className="w-full h-full flex flex-col justify-between pt-4">
-                          <div>
-                            <div className="flex items-center gap-3 mb-6 bg-white p-3 rounded-2xl border border-zinc-200/50 shadow-sm">
-                              <img src="/logo-delivery.png" alt="Delivery App Logo" className="w-10 h-10 object-contain" />
-                              <div>
-                                <h5 className="font-extrabold text-zinc-900 text-sm leading-tight">Cafe QR Delivery</h5>
-                                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-primary bg-orange-50 px-2 py-0.5 rounded-full mt-0.5 border border-orange-100">
-                                  <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse"></span>
-                                  Active Shift
-                                </span>
-                              </div>
-                            </div>
-                            <div className="space-y-3">
-                              <h6 className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider px-1">Upcoming Deliveries</h6>
-                              <div className="bg-white rounded-2xl p-3 border border-zinc-200/50 shadow-sm flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                  <span className="text-[10px] font-bold text-zinc-400">Order #4829</span>
-                                  <h6 className="text-xs font-bold text-zinc-900">Pizza Plaza, Sector 4</h6>
-                                  <p className="text-[9px] text-zinc-500 font-medium">Distance: 1.2 km</p>
-                                </div>
-                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-full shrink-0">Ready</span>
-                              </div>
-                              <div className="h-28 bg-sky-50 border border-sky-100 rounded-2xl relative overflow-hidden flex items-center justify-center p-2 shadow-inner">
-                                <svg className="absolute w-full h-full inset-0 p-4" viewBox="0 0 100 50">
-                                  <path d="M 10 40 Q 50 10 90 30" fill="none" stroke="#CBD5E1" strokeWidth="3" strokeLinecap="round" />
-                                  <path d="M 10 40 Q 50 10 90 30" fill="none" stroke="#F97316" strokeWidth="3" strokeLinecap="round" strokeDasharray="6 3" />
-                                </svg>
-                                <div className="absolute left-[13%] bottom-[20%] w-3 h-3 bg-zinc-900 rounded-full border-2 border-white shadow-sm flex items-center justify-center">
-                                  <div className="w-1 h-1 bg-white rounded-full"></div>
-                                </div>
-                                <div className="absolute right-[13%] bottom-[38%] text-primary animate-bounce">
-                                  <MapPin className="w-4 h-4 fill-primary text-white" />
-                                </div>
-                                <span className="absolute bottom-2 left-3 text-[8px] font-bold text-zinc-500 bg-white/80 px-2 py-0.5 rounded-full border border-zinc-200">Simulating Route...</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="space-y-2.5">
-                            <button className="w-full py-3.5 bg-zinc-900 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-md">
-                              Start Delivery Route
-                            </button>
-                            <span className="text-[9px] text-zinc-400 block text-center font-semibold">Driver ID: Riyas (Online)</span>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-
-                  <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-28 h-1 bg-zinc-300 rounded-full z-20"></div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      {/* ── FAQ ────────────────────────────────────────────────────── */}
-      <FAQ />
-
-      {/* ── Footer ─────────────────────────────────────────────────── */}
-      <footer className="border-t border-white/30 py-12 px-4 text-center text-zinc-500 text-sm bg-white/40 backdrop-blur-xl relative z-10">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Cafe QR Logo" className="w-8 h-8 object-contain rounded-md" />
-            <span className="font-bold text-zinc-900">Cafe QR POS ERP Ecosystem</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <a
-              href="/blog/best-pos-billing-software-2026/"
-              className="text-zinc-500 hover:text-zinc-700 font-medium transition-colors cursor-pointer"
-            >
-              Read our Blog
-            </a>
-            <span className="text-zinc-300">•</span>
-            <a
-              href="#terms"
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.hash = 'terms';
-                setCurrentView('terms');
-                window.scrollTo(0, 0);
-              }}
-              className="text-zinc-500 hover:text-zinc-700 font-medium transition-colors cursor-pointer"
-            >
-              Terms & Conditions
-            </a>
-            <span className="text-zinc-300">•</span>
-            <p>© {new Date().getFullYear()} Cafe QR. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
-
-      {/* ── Checkout Modal ─────────────────────────────────────────── */}
-      {checkoutPlan && (
-        <CheckoutModal
-          plan={checkoutPlan}
-          onClose={() => setCheckoutPlan(null)}
-          backendApiUrl={backendApiUrl}
+        {/* Screen 2: Item Detail Modal */}
+        <ItemDetailModal
+          item={selectedItemForDetail}
+          isOpen={Boolean(selectedItemForDetail)}
+          onClose={() => setSelectedItemForDetail(null)}
+          onAddToCart={(item, qty, note, variant, selectedVariants) =>
+            handleAddToCart(item, qty, note, variant, selectedVariants)
+          }
+          initialQty={selectedItemForDetail ? cart[selectedItemForDetail.id]?.qty || 1 : 1}
         />
-      )}
 
+        {/* Active Tab Running Bill Drawer */}
+        <ActiveTabDrawer
+          isOpen={isActiveTabOpen}
+          onClose={() => setIsActiveTabOpen(false)}
+          onAddMore={() => {
+            setIsActiveTabOpen(false);
+            setCurrentView('menu');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          activeOrder={activeOrder}
+          tableNumber={tableInfo?.tableNumber}
+        />
+
+        {/* Order Success Confirmation */}
+        <OrderSuccessModal
+          orderResult={orderResult}
+          tableNumber={tableInfo?.tableNumber}
+          onClose={() => setOrderResult(null)}
+        />
+
+        {/* Customer Login / Signup Screen on First Scan */}
+        <CustomerLoginModal
+          isOpen={showAuthModal}
+          clientId={routeParams.clientId}
+          orgId={routeParams.orgId}
+          tableInfo={tableInfo}
+          onLoginSuccess={(auth) => {
+            setCustomer(auth);
+            setShowAuthModal(false);
+          }}
+          onContinueAsGuest={() => {
+            setShowAuthModal(false);
+          }}
+        />
+      </div>
     </div>
   );
 }
