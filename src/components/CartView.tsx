@@ -64,6 +64,14 @@ export const CartView: React.FC<CartViewProps> = ({
   let computedTotalPayable = 0;
 
   items.forEach((item) => {
+    const isPackaged = Boolean(
+      item.isPackagedGood ||
+      (item as any).is_packaged_good ||
+      (item as any).isPackaged ||
+      (item as any).is_packaged
+    );
+    const itemPricesIncludeTax = pricesIncludeTax || isPackaged;
+
     const lineRate = (item.taxRate !== undefined && item.taxRate !== null && Number(item.taxRate) > 0)
       ? Number(item.taxRate)
       : (taxEnabled ? defaultTaxRate : 0);
@@ -72,8 +80,8 @@ export const CartView: React.FC<CartViewProps> = ({
     if (!taxEnabled || lineRate <= 0) {
       computedNetSubtotal += lineGross;
       computedTotalPayable += lineGross;
-    } else if (pricesIncludeTax) {
-      // Inclusive pricing: menu price already includes tax
+    } else if (itemPricesIncludeTax) {
+      // Inclusive pricing: menu price already includes tax (Packaged goods are always inclusive)
       const base = lineGross / (1 + lineRate / 100);
       const tax = lineGross - base;
       computedNetSubtotal += base;
@@ -223,9 +231,16 @@ export const CartView: React.FC<CartViewProps> = ({
                             Note: {item.itemNote}
                           </p>
                         )}
-                        <p className="text-xs font-black text-slate-900 mt-0.5">
-                          ₹{itemTotal.toFixed(0)}
-                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-xs font-black text-slate-900">
+                            {currency}{itemTotal.toFixed(itemTotal % 1 === 0 ? 0 : 2)}
+                          </span>
+                          {(item.isPackagedGood || (item as any).is_packaged_good || (item as any).isPackaged) && (
+                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 uppercase tracking-tight">
+                              Incl. Tax
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 

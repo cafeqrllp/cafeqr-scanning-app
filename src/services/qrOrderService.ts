@@ -15,6 +15,8 @@ export interface MenuItem {
   productType?: string;
   taxRate?: number;
   taxCode?: string;
+  isPackagedGood?: boolean;
+  isPackaged?: boolean;
   outOfStock?: boolean;
   currentStock?: number | null;
   variants?: Array<{

@@ -133,7 +133,7 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
           )}
 
           {/* Price Tag */}
-          <div className="pt-0.5 flex items-baseline">
+          <div className="pt-0.5 flex items-center gap-1.5">
             <span
               className={`font-black text-xs sm:text-sm tracking-tight ${
                 isOutOfStock ? 'text-slate-400' : 'text-slate-900'
@@ -141,6 +141,11 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
             >
               ₹{price.toFixed(price % 1 === 0 ? 0 : 2)}
             </span>
+            {(item.isPackagedGood || (item as any).is_packaged_good || (item as any).isPackaged) && (
+              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 uppercase tracking-tight">
+                Incl. Tax
+              </span>
+            )}
           </div>
         </div>
       </div>

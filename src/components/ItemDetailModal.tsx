@@ -193,6 +193,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                   {item.category}
                 </span>
               )}
+              {(item.isPackagedGood || (item as any).is_packaged_good || (item as any).isPackaged) && (
+                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 uppercase tracking-tight ml-auto">
+                  Incl. Tax
+                </span>
+              )}
             </div>
 
             <h2 className="text-sm font-black text-slate-900 leading-tight">
