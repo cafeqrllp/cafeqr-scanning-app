@@ -37,12 +37,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   onAddToCart,
   initialQty = 1,
 }) => {
-  if (!isOpen || !item) return null;
-
   const [imageError, setImageError] = useState(false);
 
   // Available variants: either from backend item.variants, or smart intelligent variants
   const variants = useMemo<VariantOptionItem[]>(() => {
+    if (!item) return [];
     if (item.variants && item.variants.length > 0) {
       return item.variants;
     }
@@ -93,6 +92,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   // Dynamic quantity handler for a specific variant
   const handleUpdateVariantQty = (variantId: string, delta: number) => {
+    if (!item) return;
     const target = variants.find((v) => v.id === variantId);
     if (!target) return;
     const maxStock = (target.currentStock !== undefined && target.currentStock !== null)
@@ -121,8 +121,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
     });
   };
 
-  const isVeg = item.isVegetarian || item.dietary === 'VEG';
-  const imgUrl = item.imageUrl || item.image;
+  const isVeg = item?.isVegetarian || item?.dietary === 'VEG';
+  const imgUrl = item?.imageUrl || item?.image;
   const hasImage = Boolean(imgUrl && !imageError);
 
   // Dynamic calculations: total price, count, and selected items list
@@ -144,12 +144,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   }, [variants, variantQtys]);
 
   const handleAdd = () => {
-    if (selectedList.length === 0) return;
+    if (selectedList.length === 0 || !item) return;
     onAddToCart(item, totalCount, undefined, undefined, selectedList);
     onClose();
   };
 
   const groupLabel = variants[0]?.groupName || 'Options / Variants';
+
+  if (!isOpen || !item) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-150 p-0 sm:p-4">

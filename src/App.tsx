@@ -370,7 +370,7 @@ export function App() {
     }
 
     setCart((prev) => {
-      let nextCart = { ...prev };
+      const nextCart = { ...prev };
 
       // Case 1: Array of { variant, qty } where each variant has its own quantity
       if (Array.isArray(selectedVariants) && selectedVariants.length > 0 && selectedVariants[0].variant) {
