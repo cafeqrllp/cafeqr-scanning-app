@@ -42,7 +42,7 @@ const getApiBase = (): string => {
 
 const api: AxiosInstance = axios.create({
   baseURL: getApiBase(),
-  timeout: 15000,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
