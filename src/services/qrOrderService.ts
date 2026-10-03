@@ -45,7 +45,9 @@ export interface ActiveOrder {
   grandTotal: number;
   totalAmount: number;
   lines: ActiveOrderLine[];
+  orderDate?: string;
   createdAt: string;
+  updatedAt?: string;
   tableNumber?: string;
 }
 

@@ -80,6 +80,14 @@ export function App() {
   const [selectedItemForDetail, setSelectedItemForDetail] = useState<MenuItem | null>(null);
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [orderResult, setOrderResult] = useState<any>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 3200);
+  }, []);
 
   // Customer Authentication state (persisted in localStorage)
   const [customer, setCustomer] = useState<CustomerAuth | null>(() => {
@@ -190,7 +198,102 @@ export function App() {
     }
   }, []);
 
-  // Poll for real-time table & order changes every 2.5 seconds (and immediately on tab focus)
+  // ── 4c. Real-Time Menu & Stock Sync ─────────────────────────
+  const syncMenu = useCallback(async (cId: string, oId: string) => {
+    if (!cId) return;
+    try {
+      const menuData = await qrOrderService.fetchMenu(cId, oId);
+      const filteredMenu = menuData.filter(
+        (item) => !item.isIngredient && item.productType?.toUpperCase() !== 'INGREDIENT'
+      );
+      setMenu((prevMenu) => {
+        const prevSimplified = prevMenu.map((m) => ({
+          id: m.id,
+          outOfStock: m.outOfStock,
+          currentStock: m.currentStock,
+          price: m.price,
+          isAvailable: m.isAvailable,
+          variants: m.variants?.map((v) => ({
+            id: v.id,
+            outOfStock: v.outOfStock,
+            currentStock: v.currentStock,
+            price: v.price
+          }))
+        }));
+        const newSimplified = filteredMenu.map((m) => ({
+          id: m.id,
+          outOfStock: m.outOfStock,
+          currentStock: m.currentStock,
+          price: m.price,
+          isAvailable: m.isAvailable,
+          variants: m.variants?.map((v) => ({
+            id: v.id,
+            outOfStock: v.outOfStock,
+            currentStock: v.currentStock,
+            price: v.price
+          }))
+        }));
+
+        if (JSON.stringify(prevSimplified) !== JSON.stringify(newSimplified)) {
+          return filteredMenu;
+        }
+        return prevMenu;
+      });
+
+      // Keep detail modal updated in real time if open
+      setSelectedItemForDetail((prevSelected) => {
+        if (!prevSelected) return null;
+        const fresh = filteredMenu.find((m) => m.id === prevSelected.id);
+        if (
+          fresh &&
+          (fresh.outOfStock !== prevSelected.outOfStock ||
+            fresh.currentStock !== prevSelected.currentStock ||
+            JSON.stringify(fresh.variants) !== JSON.stringify(prevSelected.variants))
+        ) {
+          return fresh;
+        }
+        return prevSelected;
+      });
+
+      // Keep cart stock limits synchronized if stock changes in real-time
+      setCart((prevCart) => {
+        let changed = false;
+        const updated = { ...prevCart };
+        for (const [key, cartItem] of Object.entries(updated)) {
+          const rawId = cartItem.rawProductId || cartItem.id;
+          const fresh = filteredMenu.find((m) => m.id === rawId);
+          if (!fresh) continue;
+
+          let freshStock = fresh.currentStock !== undefined && fresh.currentStock !== null ? Number(fresh.currentStock) : null;
+          if (cartItem.variantId && fresh.variants) {
+            const vMatch = fresh.variants.find((v) => v.id === cartItem.variantId);
+            if (vMatch && vMatch.currentStock !== undefined && vMatch.currentStock !== null) {
+              freshStock = Number(vMatch.currentStock);
+            }
+          }
+
+          if (freshStock !== null) {
+            if (cartItem.currentStock !== freshStock) {
+              cartItem.currentStock = freshStock;
+              changed = true;
+            }
+            if (freshStock <= 0 || fresh.outOfStock) {
+              delete updated[key];
+              changed = true;
+            } else if (cartItem.qty > freshStock) {
+              cartItem.qty = freshStock;
+              changed = true;
+            }
+          }
+        }
+        return changed ? updated : prevCart;
+      });
+    } catch (err) {
+      // Non-blocking sync heartbeat blip
+    }
+  }, []);
+
+  // Poll for real-time table, order & stock changes every 2.5 seconds (and immediately on tab focus)
   useEffect(() => {
     const { clientId, orgId, tableId } = routeParams;
     if (!clientId || !tableId) return;
@@ -201,7 +304,10 @@ export function App() {
       if (isPolling) return;
       isPolling = true;
       try {
-        await syncTableSession(clientId, orgId, tableId);
+        await Promise.allSettled([
+          syncTableSession(clientId, orgId, tableId),
+          syncMenu(clientId, orgId)
+        ]);
       } finally {
         isPolling = false;
       }
@@ -232,7 +338,7 @@ export function App() {
         window.removeEventListener('focus', handleVisibilityOrFocus);
       }
     };
-  }, [routeParams, syncTableSession]);
+  }, [routeParams, syncTableSession, syncMenu]);
 
   useEffect(() => {
     if (routeParams.clientId && routeParams.tableId) {
@@ -252,11 +358,14 @@ export function App() {
     item: MenuItem,
     qtyDelta = 1,
     itemNote?: string,
-    variant?: { id: string; name: string; price: number; outOfStock?: boolean },
+    variant?: { id: string; name: string; price: number; outOfStock?: boolean; currentStock?: number | null },
     selectedVariants?: any
   ) => {
+    const itemMaxStock = item.currentStock !== undefined && item.currentStock !== null ? Number(item.currentStock) : null;
+
     // Guard against adding out-of-stock items
-    if (item.outOfStock && !variant && (!selectedVariants || selectedVariants.length === 0)) {
+    if ((item.outOfStock || (itemMaxStock !== null && itemMaxStock <= 0)) && !variant && (!selectedVariants || selectedVariants.length === 0)) {
+      showToast(`${item.name} is currently out of stock`);
       return;
     }
 
@@ -265,15 +374,28 @@ export function App() {
 
       // Case 1: Array of { variant, qty } where each variant has its own quantity
       if (Array.isArray(selectedVariants) && selectedVariants.length > 0 && selectedVariants[0].variant) {
-        selectedVariants.forEach((entry: { variant: { id: string; name: string; price: number; outOfStock?: boolean }; qty: number }) => {
+        selectedVariants.forEach((entry: { variant: { id: string; name: string; price: number; outOfStock?: boolean; currentStock?: number | null }; qty: number }) => {
           const v = entry.variant;
-          if (v.outOfStock) return;
+          const vMaxStock = v.currentStock !== undefined && v.currentStock !== null
+            ? Number(v.currentStock)
+            : itemMaxStock;
+
+          if (v.outOfStock || (vMaxStock !== null && vMaxStock <= 0)) {
+            showToast(`${item.name} (${v.name}) is out of stock`);
+            return;
+          }
+
           const vQty = entry.qty || 1;
           const cartItemId = `${item.id}-${v.id}`;
           const current = nextCart[cartItemId];
-          const newQty = current ? current.qty + vQty : vQty;
-          const finalName = `${item.name} (${v.name})`;
+          let newQty = current ? current.qty + vQty : vQty;
+          if (vMaxStock !== null && newQty > vMaxStock) {
+            newQty = vMaxStock;
+            showToast(`Only ${vMaxStock} in stock for ${item.name} (${v.name})`);
+          }
+          if (newQty <= 0) return;
 
+          const finalName = `${item.name} (${v.name})`;
           nextCart[cartItemId] = {
             ...item,
             id: cartItemId,
@@ -283,6 +405,7 @@ export function App() {
             name: finalName,
             price: v.price,
             qty: newQty,
+            currentStock: vMaxStock,
             itemNote: itemNote !== undefined ? itemNote : current?.itemNote,
           };
         });
@@ -291,13 +414,30 @@ export function App() {
 
       // Case 2: Array of variants (single combined item)
       if (Array.isArray(selectedVariants) && selectedVariants.length > 0) {
+        let combMaxStock = itemMaxStock;
+        for (const sv of selectedVariants) {
+          if (sv.currentStock !== undefined && sv.currentStock !== null) {
+            combMaxStock = combMaxStock === null ? Number(sv.currentStock) : Math.min(combMaxStock, Number(sv.currentStock));
+          }
+        }
         const variantIds = selectedVariants.map((v: any) => v.id).sort().join('-');
         const cartItemId = `${item.id}-${variantIds}`;
         const finalPrice = selectedVariants.reduce((sum: number, v: any) => sum + v.price, 0);
         const variantNames = selectedVariants.map((v: any) => v.name).join(', ');
         const finalName = `${item.name} (${variantNames})`;
         const current = nextCart[cartItemId];
-        const newQty = current ? current.qty + qtyDelta : qtyDelta;
+
+        if (combMaxStock !== null && combMaxStock <= 0) {
+          showToast(`${finalName} is out of stock`);
+          return nextCart;
+        }
+
+        let newQty = current ? current.qty + qtyDelta : qtyDelta;
+        if (combMaxStock !== null && newQty > combMaxStock) {
+          newQty = combMaxStock;
+          showToast(`Only ${combMaxStock} in stock for ${finalName}`);
+        }
+        if (newQty <= 0) return nextCart;
 
         nextCart[cartItemId] = {
           ...item,
@@ -308,6 +448,7 @@ export function App() {
           name: finalName,
           price: finalPrice,
           qty: newQty,
+          currentStock: combMaxStock,
           itemNote: itemNote !== undefined ? itemNote : current?.itemNote,
         };
         return nextCart;
@@ -315,11 +456,25 @@ export function App() {
 
       // Case 3: Single variant
       if (variant) {
+        const vMaxStock = variant.currentStock !== undefined && variant.currentStock !== null
+          ? Number(variant.currentStock)
+          : itemMaxStock;
+
+        if (variant.outOfStock || (vMaxStock !== null && vMaxStock <= 0)) {
+          showToast(`${item.name} (${variant.name}) is out of stock`);
+          return nextCart;
+        }
+
         const cartItemId = `${item.id}-${variant.id}`;
         const current = nextCart[cartItemId];
-        const newQty = current ? current.qty + qtyDelta : qtyDelta;
-        const finalName = `${item.name} (${variant.name})`;
+        let newQty = current ? current.qty + qtyDelta : qtyDelta;
+        if (vMaxStock !== null && newQty > vMaxStock) {
+          newQty = vMaxStock;
+          showToast(`Only ${vMaxStock} in stock for ${item.name} (${variant.name})`);
+        }
+        if (newQty <= 0) return nextCart;
 
+        const finalName = `${item.name} (${variant.name})`;
         nextCart[cartItemId] = {
           ...item,
           id: cartItemId,
@@ -329,19 +484,32 @@ export function App() {
           name: finalName,
           price: variant.price,
           qty: newQty,
+          currentStock: vMaxStock,
           itemNote: itemNote !== undefined ? itemNote : current?.itemNote,
         };
         return nextCart;
       }
 
       // Case 4: Standard non-variant product
+      if (itemMaxStock !== null && itemMaxStock <= 0) {
+        showToast(`${item.name} is out of stock`);
+        return nextCart;
+      }
+
       const current = nextCart[item.id];
-      const newQty = current ? current.qty + qtyDelta : qtyDelta;
+      let newQty = current ? current.qty + qtyDelta : qtyDelta;
+      if (itemMaxStock !== null && newQty > itemMaxStock) {
+        newQty = itemMaxStock;
+        showToast(`Only ${itemMaxStock} in stock for ${item.name}`);
+      }
+      if (newQty <= 0) return nextCart;
+
       nextCart[item.id] = {
         ...item,
         id: item.id,
         rawProductId: item.id,
         qty: newQty,
+        currentStock: itemMaxStock,
         itemNote: itemNote !== undefined ? itemNote : current?.itemNote,
       };
       return nextCart;
@@ -352,11 +520,26 @@ export function App() {
     setCart((prev) => {
       const current = prev[productId];
       if (!current) return prev;
+      const maxStock = current.currentStock !== undefined && current.currentStock !== null ? Number(current.currentStock) : null;
+      if (delta > 0 && maxStock !== null && current.qty >= maxStock) {
+        showToast(`Only ${maxStock} in stock for ${current.name}`);
+        return prev;
+      }
       const newQty = current.qty + delta;
       if (newQty <= 0) {
         const copy = { ...prev };
         delete copy[productId];
         return copy;
+      }
+      if (maxStock !== null && newQty > maxStock) {
+        showToast(`Only ${maxStock} in stock for ${current.name}`);
+        return {
+          ...prev,
+          [productId]: {
+            ...current,
+            qty: maxStock,
+          },
+        };
       }
       return {
         ...prev,
@@ -521,6 +704,14 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-100/80 sm:py-6">
+      {/* Real-time Stock / Error Toast Alert */}
+      {toastMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 border border-slate-700/50 backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200 pointer-events-none">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* Mobile Phone Mockup Frame (Screen 1 & Screen 3) */}
       <div
         className={`max-w-md mx-auto min-h-screen sm:min-h-[92vh] sm:rounded-3xl bg-white shadow-xl border-x sm:border border-slate-200/80 flex flex-col relative overflow-x-hidden ${

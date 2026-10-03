@@ -94,15 +94,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   // Dynamic quantity handler for a specific variant
   const handleUpdateVariantQty = (variantId: string, delta: number) => {
     const target = variants.find((v) => v.id === variantId);
-    if (target?.outOfStock && delta > 0) return;
+    if (!target) return;
+    const maxStock = (target.currentStock !== undefined && target.currentStock !== null)
+      ? Number(target.currentStock)
+      : (item.currentStock !== undefined && item.currentStock !== null ? Number(item.currentStock) : null);
+
+    if (delta > 0 && ((target.outOfStock) || (maxStock !== null && maxStock <= 0))) {
+      return;
+    }
 
     setVariantQtys((prev) => {
       const current = prev[variantId] || 0;
+      if (delta > 0 && maxStock !== null && current >= maxStock) {
+        return prev;
+      }
       const next = current + delta;
       if (next <= 0) {
         const copy = { ...prev };
         delete copy[variantId];
         return copy;
+      }
+      if (maxStock !== null && next > maxStock) {
+        return { ...prev, [variantId]: maxStock };
       }
       return { ...prev, [variantId]: next };
     });
@@ -230,12 +243,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 {variants.map((v) => {
                   const qty = variantQtys[v.id] || 0;
                   const isSelected = qty > 0;
-                  const isOutOfStock = Boolean(v.outOfStock);
+                  const maxStock = (v.currentStock !== undefined && v.currentStock !== null)
+                    ? Number(v.currentStock)
+                    : (item.currentStock !== undefined && item.currentStock !== null ? Number(item.currentStock) : null);
+                  const isOutOfStock = Boolean(v.outOfStock) || (maxStock !== null && maxStock <= 0);
+                  const isStockMaxed = maxStock !== null && qty >= maxStock;
 
                   return (
                     <div
                       key={v.id}
-                      onClick={() => !isOutOfStock && handleUpdateVariantQty(v.id, 1)}
+                      onClick={() => !isOutOfStock && !isStockMaxed && handleUpdateVariantQty(v.id, 1)}
                       className={`flex items-center justify-between py-2 px-3 rounded-xl border transition-all duration-200 select-none ${
                         isOutOfStock
                           ? 'border-slate-100 bg-slate-50/50 opacity-60 cursor-not-allowed'
@@ -250,11 +267,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                           <span className={`text-xs ${isOutOfStock ? 'text-slate-400 line-through' : isSelected ? 'font-bold text-slate-900' : 'font-medium text-slate-700'}`}>
                             {v.name}
                           </span>
-                          {isOutOfStock && (
+                          {isOutOfStock ? (
                             <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-100">
                               Out of Stock
                             </span>
-                          )}
+                          ) : maxStock !== null && maxStock > 0 && maxStock <= 5 ? (
+                            <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                              Only {maxStock} left
+                            </span>
+                          ) : null}
                         </div>
                         <div className="text-[11px] font-bold text-slate-900 mt-0.5">
                           ₹{v.price.toFixed(0)}
@@ -291,8 +312,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleUpdateVariantQty(v.id, 1)}
-                              className="w-5 h-5 rounded hover:bg-orange-50 text-orange-600 flex items-center justify-center transition active:scale-90 cursor-pointer"
+                              disabled={isStockMaxed}
+                              className={`w-5 h-5 rounded flex items-center justify-center transition ${
+                                isStockMaxed
+                                  ? 'text-slate-300 opacity-35 cursor-not-allowed'
+                                  : 'text-orange-600 hover:bg-orange-50 active:scale-90 cursor-pointer'
+                              }`}
                               aria-label="Increase"
+                              title={isStockMaxed ? `Only ${maxStock} left in stock` : undefined}
                             >
                               <Plus className="w-2.5 h-2.5" />
                             </button>
@@ -301,7 +328,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleUpdateVariantQty(v.id, 1)}
-                            className="px-2.5 py-1 text-[11px] font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 rounded-lg transition active:scale-95 cursor-pointer flex items-center gap-1 shadow-2xs"
+                            disabled={isStockMaxed}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition flex items-center gap-1 shadow-2xs ${
+                              isStockMaxed
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 active:scale-95 cursor-pointer'
+                            }`}
                           >
                             <Plus className="w-3 h-3 text-slate-400" />
                             <span>Add</span>

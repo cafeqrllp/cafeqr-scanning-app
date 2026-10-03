@@ -200,6 +200,8 @@ export const CartView: React.FC<CartViewProps> = ({
               {items.map((item) => {
                 const imgUrl = item.imageUrl || item.image;
                 const itemTotal = item.price * item.qty;
+                const maxStock = item.currentStock !== undefined && item.currentStock !== null ? Number(item.currentStock) : null;
+                const isStockMaxed = maxStock !== null && item.qty >= maxStock;
 
                 return (
                   <div key={item.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3">
@@ -240,6 +242,11 @@ export const CartView: React.FC<CartViewProps> = ({
                               Incl. Tax
                             </span>
                           )}
+                          {maxStock !== null && isStockMaxed && (
+                            <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                              Max stock ({maxStock})
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -250,7 +257,7 @@ export const CartView: React.FC<CartViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onUpdateQty(item.id, -1)}
-                          className="p-0.5 hover:bg-orange-700 rounded transition active:scale-90"
+                          className="p-0.5 hover:bg-orange-700 rounded transition active:scale-90 cursor-pointer"
                           aria-label="Decrease"
                         >
                           <Minus className="w-3 h-3" />
@@ -261,8 +268,14 @@ export const CartView: React.FC<CartViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onUpdateQty(item.id, 1)}
-                          className="p-0.5 hover:bg-orange-700 rounded transition active:scale-90"
+                          disabled={isStockMaxed}
+                          className={`p-0.5 rounded transition ${
+                            isStockMaxed
+                              ? 'opacity-35 cursor-not-allowed text-orange-200'
+                              : 'hover:bg-orange-700 active:scale-90 cursor-pointer'
+                          }`}
                           aria-label="Increase"
+                          title={isStockMaxed ? `Only ${maxStock} in stock` : undefined}
                         >
                           <Plus className="w-3 h-3" />
                         </button>

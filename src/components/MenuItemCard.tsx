@@ -30,14 +30,16 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
   const price = Number(item.price || 0);
 
   const hasVariants = checkHasVariants(item);
-  const isOutOfStock = Boolean(item.outOfStock);
+  const maxStock = item.currentStock !== undefined && item.currentStock !== null ? Number(item.currentStock) : null;
+  const isOutOfStock = Boolean(item.outOfStock) || (maxStock !== null && maxStock <= 0);
+  const isStockMaxed = maxStock !== null && cartQty >= maxStock;
 
   const handleCardClick = () => {
     if (isOutOfStock) return;
     if (hasVariants) {
       onOpenDetails?.();
     } else {
-      if (cartQty === 0) {
+      if (cartQty === 0 && !isStockMaxed) {
         onAddToCart();
       }
     }
@@ -146,6 +148,11 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
                 Incl. Tax
               </span>
             )}
+            {maxStock !== null && maxStock > 0 && maxStock <= 5 && !isOutOfStock && (
+              <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/60">
+                Only {maxStock} left
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -174,8 +181,14 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
             <button
               type="button"
               onClick={onAddToCart}
-              className="p-1 hover:bg-orange-700 rounded-lg transition active:scale-90 cursor-pointer"
+              disabled={isStockMaxed}
+              className={`p-1 rounded-lg transition ${
+                isStockMaxed
+                  ? 'opacity-35 cursor-not-allowed text-orange-200'
+                  : 'hover:bg-orange-700 active:scale-90 cursor-pointer'
+              }`}
               aria-label="Increase quantity"
+              title={isStockMaxed ? `Only ${maxStock} left in stock` : undefined}
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -193,7 +206,12 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
           <button
             type="button"
             onClick={onAddToCart}
-            className="w-full py-2 px-3 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
+            disabled={isStockMaxed}
+            className={`w-full py-2 px-3 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1 ${
+              isStockMaxed
+                ? 'bg-slate-300 cursor-not-allowed opacity-60'
+                : 'bg-orange-500 hover:bg-orange-600 active:scale-95 cursor-pointer'
+            }`}
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add</span>
