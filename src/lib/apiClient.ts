@@ -28,7 +28,7 @@ const getApiBase = (): string => {
     }
 
     // 4. Auto-detect environment based on hostname
-    const isTestEnv = hostname.includes('test') || hostname.includes('staging') || hostname.includes('dev');
+    const isTestEnv = hostname.includes('test-api') || hostname.startsWith('test-') || hostname.startsWith('staging-');
     if (isTestEnv) {
       return 'https://test-api.cafeqr.in/api';
     }
