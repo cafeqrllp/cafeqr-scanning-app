@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Minus, Utensils, Sparkles } from 'lucide-react';
+import { Plus, Minus, Sparkles } from 'lucide-react';
 import type { MenuItem } from '../services/qrOrderService';
 
 interface MenuItemCardProps {
