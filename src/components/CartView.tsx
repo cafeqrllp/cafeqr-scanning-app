@@ -63,6 +63,8 @@ export const CartView: React.FC<CartViewProps> = ({
   let computedTaxTotal = 0;
   let computedTotalPayable = 0;
 
+  const taxGroupsMap = new Map<string, { rate: number; isInclusive: boolean; taxAmount: number; taxableBase: number }>();
+
   items.forEach((item) => {
     const isPackaged = Boolean(
       item.isPackagedGood ||
@@ -87,22 +89,28 @@ export const CartView: React.FC<CartViewProps> = ({
       computedNetSubtotal += base;
       computedTaxTotal += tax;
       computedTotalPayable += lineGross;
+
+      const key = `${lineRate}_${itemPricesIncludeTax ? 'incl' : 'excl'}`;
+      const existing = taxGroupsMap.get(key) || { rate: lineRate, isInclusive: itemPricesIncludeTax, taxAmount: 0, taxableBase: 0 };
+      existing.taxAmount += tax;
+      existing.taxableBase += base;
+      taxGroupsMap.set(key, existing);
     } else {
       // Exclusive pricing: tax is added on top of menu price
       const tax = lineGross * (lineRate / 100);
       computedNetSubtotal += lineGross;
       computedTaxTotal += tax;
       computedTotalPayable += lineGross + tax;
+
+      const key = `${lineRate}_${itemPricesIncludeTax ? 'incl' : 'excl'}`;
+      const existing = taxGroupsMap.get(key) || { rate: lineRate, isInclusive: itemPricesIncludeTax, taxAmount: 0, taxableBase: 0 };
+      existing.taxAmount += tax;
+      existing.taxableBase += lineGross;
+      taxGroupsMap.set(key, existing);
     }
   });
 
-  const effectiveTaxRate = computedNetSubtotal > 0
-    ? Math.round(((computedTaxTotal / computedNetSubtotal) * 100) * 10) / 10
-    : defaultTaxRate;
-
-  const hasInclusiveItems = pricesIncludeTax || items.some(item => 
-    Boolean(item.isPackagedGood || (item as any).is_packaged_good || (item as any).isPackaged || (item as any).is_packaged)
-  );
+  const taxGroups = Array.from(taxGroupsMap.values());
 
   const totalAmount = computedTotalPayable;
 
@@ -370,32 +378,38 @@ export const CartView: React.FC<CartViewProps> = ({
                   </span>
                 </div>
 
-                {taxEnabled && computedTaxTotal > 0 ? (
-                  taxSplitEnabled && taxLabel.toUpperCase() === 'GST' ? (
-                    <>
-                      <div className="flex justify-between items-center text-slate-500 text-[11px]">
-                        <span>CGST ({(effectiveTaxRate / 2).toFixed(1)}%{hasInclusiveItems ? ' incl.' : ''})</span>
+                {taxEnabled && taxGroups.length > 0 && computedTaxTotal > 0 ? (
+                  taxGroups.map((group, idx) => {
+                    const key = `${group.rate}-${group.isInclusive ? 'incl' : 'excl'}-${idx}`;
+                    if (taxSplitEnabled && taxLabel.toUpperCase() === 'GST') {
+                      return (
+                        <React.Fragment key={key}>
+                          <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                            <span>CGST ({(group.rate / 2).toFixed(1)}%{group.isInclusive ? ' incl.' : ''})</span>
+                            <span className="font-semibold text-slate-700">
+                              {currency}{(group.taxAmount / 2).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                            <span>SGST ({(group.rate / 2).toFixed(1)}%{group.isInclusive ? ' incl.' : ''})</span>
+                            <span className="font-semibold text-slate-700">
+                              {currency}{(group.taxAmount / 2).toFixed(2)}
+                            </span>
+                          </div>
+                        </React.Fragment>
+                      );
+                    }
+                    return (
+                      <div key={key} className="flex justify-between items-center text-slate-500 text-[11px]">
+                        <span>
+                          {taxLabel} ({group.rate}%{group.isInclusive ? ' incl.' : ''})
+                        </span>
                         <span className="font-semibold text-slate-700">
-                          {currency}{(computedTaxTotal / 2).toFixed(2)}
+                          {currency}{group.taxAmount.toFixed(2)}
                         </span>
                       </div>
-                      <div className="flex justify-between items-center text-slate-500 text-[11px]">
-                        <span>SGST ({(effectiveTaxRate / 2).toFixed(1)}%{hasInclusiveItems ? ' incl.' : ''})</span>
-                        <span className="font-semibold text-slate-700">
-                          {currency}{(computedTaxTotal / 2).toFixed(2)}
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex justify-between items-center text-slate-500 text-[11px]">
-                      <span>
-                        {taxLabel} ({effectiveTaxRate}%{hasInclusiveItems ? ' incl.' : ''})
-                      </span>
-                      <span className="font-semibold text-slate-700">
-                        {currency}{computedTaxTotal.toFixed(2)}
-                      </span>
-                    </div>
-                  )
+                    );
+                  })
                 ) : (
                   <div className="flex justify-between items-center text-slate-500 text-[11px]">
                     <span>{taxLabel || 'Taxes & GST'}</span>
