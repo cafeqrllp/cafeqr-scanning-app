@@ -111,6 +111,17 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
           if (check.name) setName(check.name);
           if (check.phone) setPhone(check.phone);
         }
+      } else if (mode === 'SIGNUP') {
+        // Prevent duplicate customer accounts with the same email
+        const check = await qrOrderService.checkEmail(cleanEmail, clientId);
+        if (check.exists) {
+          setError('An account with this email already exists. Please log in instead.');
+          setMode('LOGIN');
+          if (check.name) setName(check.name);
+          if (check.phone) setPhone(check.phone);
+          setLoading(false);
+          return;
+        }
       }
 
       await qrOrderService.sendOtp(cleanEmail);
