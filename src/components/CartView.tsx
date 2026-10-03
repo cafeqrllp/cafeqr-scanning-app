@@ -96,6 +96,14 @@ export const CartView: React.FC<CartViewProps> = ({
     }
   });
 
+  const effectiveTaxRate = computedNetSubtotal > 0
+    ? Math.round(((computedTaxTotal / computedNetSubtotal) * 100) * 10) / 10
+    : defaultTaxRate;
+
+  const hasInclusiveItems = pricesIncludeTax || items.some(item => 
+    Boolean(item.isPackagedGood || (item as any).is_packaged_good || (item as any).isPackaged || (item as any).is_packaged)
+  );
+
   const totalAmount = computedTotalPayable;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -366,13 +374,13 @@ export const CartView: React.FC<CartViewProps> = ({
                   taxSplitEnabled && taxLabel.toUpperCase() === 'GST' ? (
                     <>
                       <div className="flex justify-between items-center text-slate-500 text-[11px]">
-                        <span>CGST ({(defaultTaxRate / 2).toFixed(1)}%{pricesIncludeTax ? ' incl.' : ''})</span>
+                        <span>CGST ({(effectiveTaxRate / 2).toFixed(1)}%{hasInclusiveItems ? ' incl.' : ''})</span>
                         <span className="font-semibold text-slate-700">
                           {currency}{(computedTaxTotal / 2).toFixed(2)}
                         </span>
                       </div>
                       <div className="flex justify-between items-center text-slate-500 text-[11px]">
-                        <span>SGST ({(defaultTaxRate / 2).toFixed(1)}%{pricesIncludeTax ? ' incl.' : ''})</span>
+                        <span>SGST ({(effectiveTaxRate / 2).toFixed(1)}%{hasInclusiveItems ? ' incl.' : ''})</span>
                         <span className="font-semibold text-slate-700">
                           {currency}{(computedTaxTotal / 2).toFixed(2)}
                         </span>
@@ -381,7 +389,7 @@ export const CartView: React.FC<CartViewProps> = ({
                   ) : (
                     <div className="flex justify-between items-center text-slate-500 text-[11px]">
                       <span>
-                        {taxLabel} ({defaultTaxRate}%{pricesIncludeTax ? ' incl.' : ''})
+                        {taxLabel} ({effectiveTaxRate}%{hasInclusiveItems ? ' incl.' : ''})
                       </span>
                       <span className="font-semibold text-slate-700">
                         {currency}{computedTaxTotal.toFixed(2)}
