@@ -111,7 +111,7 @@ export const CartView: React.FC<CartViewProps> = ({
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         customerNote: customerNote.trim(),
-        paymentMethod,
+        paymentMethod: 'CASH',
       });
     } catch (err: any) {
       setValidationError(err.message || 'Failed to place order. Please try again.');
@@ -410,17 +410,13 @@ export const CartView: React.FC<CartViewProps> = ({
                 Payment Method
               </h3>
               <div className="space-y-2">
-                {/* Pay at Counter */}
+                {/* Pay at Counter (Only allowed payment method) */}
                 <label 
                   onClick={() => setPaymentMethod('CASH')}
-                  className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition ${
-                    paymentMethod === 'CASH'
-                      ? 'border-orange-500 bg-orange-50/50 text-slate-900'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
+                  className="p-3 rounded-2xl border border-orange-500 bg-orange-50/50 text-slate-900 flex items-center justify-between cursor-pointer transition"
                 >
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-xl bg-orange-100 text-slate-700 flex items-center justify-center">
                       <Banknote className="w-4 h-4 text-emerald-600" />
                     </div>
                     <div>
@@ -431,40 +427,39 @@ export const CartView: React.FC<CartViewProps> = ({
                   <input
                     type="radio"
                     name="payment"
-                    checked={paymentMethod === 'CASH'}
-                    onChange={() => setPaymentMethod('CASH')}
+                    checked={true}
+                    readOnly
                     className="accent-orange-600 w-4 h-4"
                   />
                 </label>
 
-                {/* Pay Online (if enabled) */}
-                {onlinePaymentEnabled && (
-                  <label 
-                    onClick={() => setPaymentMethod('ONLINE')}
-                    className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition ${
-                      paymentMethod === 'ONLINE'
-                        ? 'border-orange-500 bg-orange-50/50 text-slate-900'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-                        <CreditCard className="w-4 h-4 text-orange-600" />
-                      </div>
-                      <div>
-                        <div className="font-black text-xs">Pay Online (UPI / Card / NetBanking)</div>
-                        <div className="text-[10px] text-slate-400">Scan QR or pay via UPI instantly</div>
-                      </div>
+                {/* Pay Online (Disabled as of now) */}
+                <div 
+                  className="p-3 rounded-2xl border border-slate-200 bg-slate-50/80 opacity-60 flex items-center justify-between cursor-not-allowed select-none transition"
+                  title="Online payment is currently disabled. Please pay at counter."
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-slate-200/80 text-slate-400 flex items-center justify-center">
+                      <CreditCard className="w-4 h-4 text-slate-400" />
                     </div>
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={paymentMethod === 'ONLINE'}
-                      onChange={() => setPaymentMethod('ONLINE')}
-                      className="accent-orange-600 w-4 h-4"
-                    />
-                  </label>
-                )}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <div className="font-bold text-xs text-slate-500">Pay Online (UPI / Card / NetBanking)</div>
+                        <span className="text-[9px] font-black uppercase tracking-wider bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">
+                          Disabled
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-400">Currently unavailable • Pay at counter</div>
+                    </div>
+                  </div>
+                  <input
+                    type="radio"
+                    name="payment"
+                    disabled
+                    checked={false}
+                    className="accent-orange-600 w-4 h-4 cursor-not-allowed"
+                  />
+                </div>
               </div>
             </div>
 
