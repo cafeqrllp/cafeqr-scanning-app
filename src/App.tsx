@@ -766,7 +766,7 @@ export function App() {
                     <span className="w-6 h-6 rounded-lg bg-orange-800/80 text-white flex items-center justify-center text-[11px] font-extrabold shadow-inner">
                       {cartItemCount}
                     </span>
-                    <span className="tracking-wide">View Order (Pesanan Kamu)</span>
+                    <span className="tracking-wide">View Cart</span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
