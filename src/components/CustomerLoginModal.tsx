@@ -107,6 +107,9 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
           setError('No existing account found with this email. Please enter your name and phone number to sign up.');
           setLoading(false);
           return;
+        } else {
+          if (check.name) setName(check.name);
+          if (check.phone) setPhone(check.phone);
         }
       }
 
@@ -137,8 +140,8 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
       const cleanEmail = email.trim().toLowerCase();
       const auth = await qrOrderService.verifyOtp({
         identifier: cleanEmail,
-        name: mode === 'SIGNUP' ? name.trim() : undefined,
-        phone: mode === 'SIGNUP' ? phone.trim() : undefined,
+        name: name.trim() || undefined,
+        phone: phone.trim() || undefined,
         otp: cleanOtp,
         clientId,
         orgId,
