@@ -5,6 +5,9 @@ import type { MenuItem, TableSessionInfo, ActiveOrder } from '../services/qrOrde
 interface CartItem extends MenuItem {
   qty: number;
   itemNote?: string;
+  rawProductId?: string;
+  variantId?: string;
+  variantName?: string;
 }
 
 interface CartViewProps {
@@ -264,6 +267,40 @@ export const CartView: React.FC<CartViewProps> = ({
                             </span>
                           )}
                         </div>
+
+                        {/* If already ordered in active tab, show merged indicator */}
+                        {(() => {
+                          const alreadyOrderedQty = isAppendingToTab && activeOrder?.lines
+                            ? activeOrder.lines.reduce((sum: number, l: any) => {
+                                const linePid = String(l.productId || '');
+                                const itemPid = String(item.rawProductId || item.id || '');
+                                const lineVid = String(l.variantId || '');
+                                const itemVid = String(item.variantId || '');
+
+                                const matchesProduct =
+                                  (linePid && itemPid && linePid === itemPid) ||
+                                  (l.productName && item.name && l.productName.toLowerCase() === item.name.toLowerCase());
+                                const matchesVariant = (!lineVid && !itemVid) || lineVid === itemVid;
+
+                                if (matchesProduct && matchesVariant) {
+                                  return sum + Number(l.quantity || 0);
+                                }
+                                return sum;
+                              }, 0)
+                            : 0;
+
+                          if (alreadyOrderedQty <= 0) return null;
+
+                          return (
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-200/90 px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                                <span>Already in order: {alreadyOrderedQty}</span>
+                                <span className="text-emerald-400">•</span>
+                                <span>Combined: {alreadyOrderedQty + item.qty}</span>
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
