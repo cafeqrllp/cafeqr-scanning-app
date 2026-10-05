@@ -30,11 +30,14 @@ export interface MenuItem {
 
 export interface ActiveOrderLine {
   id?: string;
+  productId?: string;
+  variantId?: string;
   productName: string;
   quantity: number;
   unitPrice: number;
   lineTotal: number;
   categoryName?: string;
+  isactive?: string;
 }
 
 export interface ActiveOrder {
