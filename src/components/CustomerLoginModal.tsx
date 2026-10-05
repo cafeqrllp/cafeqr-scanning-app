@@ -96,11 +96,13 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
       }
     }
 
+    const effectiveClientId = (tableInfo as any)?.clientId || clientId;
+
     setLoading(true);
     try {
       if (mode === 'LOGIN') {
         // Check if customer already exists
-        const check = await qrOrderService.checkEmail(cleanEmail, clientId);
+        const check = await qrOrderService.checkEmail(cleanEmail, effectiveClientId);
         if (!check.exists) {
           // Switch to signup mode automatically with a friendly message
           setMode('SIGNUP');
@@ -113,7 +115,7 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
         }
       } else if (mode === 'SIGNUP') {
         // Prevent duplicate customer accounts with the same email
-        const check = await qrOrderService.checkEmail(cleanEmail, clientId);
+        const check = await qrOrderService.checkEmail(cleanEmail, effectiveClientId);
         if (check.exists) {
           setError('An account with this email already exists. Please log in instead.');
           setMode('LOGIN');
@@ -154,7 +156,7 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
         name: name.trim() || undefined,
         phone: phone.trim() || undefined,
         otp: cleanOtp,
-        clientId,
+        clientId: (tableInfo as any)?.clientId || clientId,
         orgId,
       });
 

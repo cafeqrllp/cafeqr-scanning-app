@@ -19,7 +19,23 @@ export const ActiveTabDrawer: React.FC<ActiveTabDrawerProps> = ({
 }) => {
   if (!isOpen || !activeOrder) return null;
 
-  const orderLines = activeOrder.lines || [];
+  // Consolidate order lines with the same productName/productId and variantId so duplicate entries are summed
+  const orderLines = React.useMemo(() => {
+    const raw = activeOrder.lines || [];
+    const map = new Map<string, (typeof raw)[0]>();
+    for (const line of raw) {
+      if ((line as any).isactive && (line as any).isactive !== 'Y') continue;
+      const key = `${line.productId || line.productName}_${(line as any).variantId || 'base'}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.quantity = Number(existing.quantity || 0) + Number(line.quantity || 0);
+        existing.lineTotal = Number(existing.lineTotal || 0) + Number(line.lineTotal || (line.unitPrice * line.quantity) || 0);
+      } else {
+        map.set(key, { ...line });
+      }
+    }
+    return Array.from(map.values());
+  }, [activeOrder.lines]);
   const rawStatus = (activeOrder.orderStatus || 'ORDERED').toUpperCase();
   let statusColor = 'bg-amber-50 text-amber-700 border-amber-200';
   let statusLabel = activeOrder.orderStatus || 'ORDERED';
