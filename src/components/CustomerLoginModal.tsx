@@ -13,7 +13,8 @@ import {
   Coffee,
   RotateCcw,
   MapPin,
-  X
+  X,
+  MessageSquare
 } from 'lucide-react';
 import { qrOrderService, type CustomerAuth, type TableSessionInfo } from '../services/qrOrderService';
 
@@ -34,6 +35,7 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
   onLoginSuccess,
   onContinueAsGuest,
 }) => {
+  const [authMethod, setAuthMethod] = useState<'WHATSAPP' | 'EMAIL'>('WHATSAPP');
   const [mode, setMode] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
   const [step, setStep] = useState<'INPUT' | 'OTP'>('INPUT');
 
@@ -79,61 +81,110 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
     e.preventDefault();
     setError(null);
 
-    const cleanEmail = email.trim().toLowerCase();
-    if (!validateEmail(cleanEmail)) {
-      setError('Please enter a valid email address.');
-      return;
-    }
-
-    if (mode === 'SIGNUP') {
-      if (!name.trim()) {
-        setError('Full Name is required for registration.');
-        return;
-      }
-      if (!phone.trim() || !validatePhone(phone)) {
-        setError('A valid Phone Number is required for registration.');
-        return;
-      }
-    }
-
     const effectiveClientId = (tableInfo as any)?.clientId || clientId;
 
-    setLoading(true);
-    try {
-      if (mode === 'LOGIN') {
-        // Check if customer already exists
-        const check = await qrOrderService.checkEmail(cleanEmail, effectiveClientId);
-        if (!check.exists) {
-          // Switch to signup mode automatically with a friendly message
-          setMode('SIGNUP');
-          setError('No existing account found with this email. Please enter your name and phone number to sign up.');
-          setLoading(false);
-          return;
-        } else {
-          if (check.name) setName(check.name);
-          if (check.phone) setPhone(check.phone);
-        }
-      } else if (mode === 'SIGNUP') {
-        // Prevent duplicate customer accounts with the same email
-        const check = await qrOrderService.checkEmail(cleanEmail, effectiveClientId);
-        if (check.exists) {
-          setError('An account with this email already exists. Please log in instead.');
-          setMode('LOGIN');
-          if (check.name) setName(check.name);
-          if (check.phone) setPhone(check.phone);
-          setLoading(false);
+    if (authMethod === 'WHATSAPP') {
+      const cleanPhone = phone.replace(/\D/g, '');
+      if (!validatePhone(phone) || cleanPhone.length < 10) {
+        setError('Please enter a valid 10-digit mobile number.');
+        return;
+      }
+
+      if (mode === 'SIGNUP') {
+        if (!name.trim()) {
+          setError('Full Name is required for registration.');
           return;
         }
       }
 
-      await qrOrderService.sendOtp(cleanEmail);
-      setStep('OTP');
-      setResendCooldown(30);
-    } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Failed to send OTP. Please try again.';
-      setError(msg);
-    } finally {
-      setLoading(false);
+      setLoading(true);
+      try {
+        if (mode === 'LOGIN') {
+          // Check if customer already exists by phone
+          const check = await qrOrderService.checkEmail(cleanPhone, effectiveClientId);
+          if (!check.exists) {
+            setMode('SIGNUP');
+            setError('No existing account found with this phone number. Please enter your name to sign up.');
+            setLoading(false);
+            return;
+          } else {
+            if (check.name) setName(check.name);
+          }
+        } else if (mode === 'SIGNUP') {
+          const check = await qrOrderService.checkEmail(cleanPhone, effectiveClientId);
+          if (check.exists) {
+            setError('An account with this phone number already exists. Please log in instead.');
+            setMode('LOGIN');
+            if (check.name) setName(check.name);
+            setLoading(false);
+            return;
+          }
+        }
+
+        await qrOrderService.sendOtp(cleanPhone, effectiveClientId, orgId);
+        setStep('OTP');
+        setResendCooldown(30);
+      } catch (err: any) {
+        const msg = err.response?.data?.message || err.message || 'Failed to send WhatsApp OTP. Please try again.';
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // EMAIL METHOD (100% PRESERVED)
+      const cleanEmail = email.trim().toLowerCase();
+      if (!validateEmail(cleanEmail)) {
+        setError('Please enter a valid email address.');
+        return;
+      }
+
+      if (mode === 'SIGNUP') {
+        if (!name.trim()) {
+          setError('Full Name is required for registration.');
+          return;
+        }
+        if (!phone.trim() || !validatePhone(phone)) {
+          setError('A valid Phone Number is required for registration.');
+          return;
+        }
+      }
+
+      setLoading(true);
+      try {
+        if (mode === 'LOGIN') {
+          // Check if customer already exists
+          const check = await qrOrderService.checkEmail(cleanEmail, effectiveClientId);
+          if (!check.exists) {
+            setMode('SIGNUP');
+            setError('No existing account found with this email. Please enter your name and phone number to sign up.');
+            setLoading(false);
+            return;
+          } else {
+            if (check.name) setName(check.name);
+            if (check.phone) setPhone(check.phone);
+          }
+        } else if (mode === 'SIGNUP') {
+          // Prevent duplicate customer accounts with the same email
+          const check = await qrOrderService.checkEmail(cleanEmail, effectiveClientId);
+          if (check.exists) {
+            setError('An account with this email already exists. Please log in instead.');
+            setMode('LOGIN');
+            if (check.name) setName(check.name);
+            if (check.phone) setPhone(check.phone);
+            setLoading(false);
+            return;
+          }
+        }
+
+        await qrOrderService.sendOtp(cleanEmail, effectiveClientId, orgId);
+        setStep('OTP');
+        setResendCooldown(30);
+      } catch (err: any) {
+        const msg = err.response?.data?.message || err.message || 'Failed to send OTP. Please try again.';
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -144,19 +195,23 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
 
     const cleanOtp = otp.trim();
     if (!cleanOtp || cleanOtp.length < 4) {
-      setError('Please enter the verification code sent to your email.');
+      setError(`Please enter the verification code sent to your ${authMethod === 'WHATSAPP' ? 'WhatsApp' : 'email'}.`);
       return;
     }
 
     setLoading(true);
     try {
+      const effectiveClientId = (tableInfo as any)?.clientId || clientId;
+      const cleanPhone = phone.replace(/\D/g, '');
       const cleanEmail = email.trim().toLowerCase();
+      const identifier = authMethod === 'WHATSAPP' ? cleanPhone : cleanEmail;
+
       const auth = await qrOrderService.verifyOtp({
-        identifier: cleanEmail,
+        identifier,
         name: name.trim() || undefined,
-        phone: phone.trim() || undefined,
+        phone: cleanPhone || undefined,
         otp: cleanOtp,
-        clientId: (tableInfo as any)?.clientId || clientId,
+        clientId: effectiveClientId,
         orgId,
       });
 
@@ -181,7 +236,9 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
     setError(null);
     setLoading(true);
     try {
-      await qrOrderService.sendOtp(email.trim().toLowerCase());
+      const effectiveClientId = (tableInfo as any)?.clientId || clientId;
+      const identifier = authMethod === 'WHATSAPP' ? phone.replace(/\D/g, '') : email.trim().toLowerCase();
+      await qrOrderService.sendOtp(identifier, effectiveClientId, orgId);
       setResendCooldown(30);
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Failed to resend code.';
@@ -244,16 +301,21 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
 
           <p className="mt-2 text-xs text-slate-500 font-medium max-w-xs mx-auto">
             {step === 'OTP'
-              ? 'Enter the 6-digit code sent to your email to continue'
+              ? authMethod === 'WHATSAPP'
+                ? 'Enter the 6-digit code sent to your WhatsApp to continue'
+                : 'Enter the 6-digit code sent to your email to continue'
               : mode === 'LOGIN'
-              ? 'Sign in with your email to order & track your bill'
+              ? authMethod === 'WHATSAPP'
+                ? 'Sign in with your WhatsApp number to order & track your bill'
+                : 'Sign in with your email to order & track your bill'
               : 'Create your guest account to order & earn loyalty rewards'}
           </p>
         </div>
 
-        {/* Tab Toggle (Only in INPUT step) */}
+        {/* Tab Toggle & Method Selector (Only in INPUT step) */}
         {step === 'INPUT' && (
-          <div className="px-6 pt-4">
+          <div className="px-6 pt-4 space-y-2">
+            {/* Login / Sign Up Tabs */}
             <div className="flex bg-slate-100/80 p-1 rounded-2xl border border-slate-200/60">
               <button
                 type="button"
@@ -284,6 +346,40 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
                 New Guest? Sign Up
               </button>
             </div>
+
+            {/* Auth Method Selector (WhatsApp vs Email) */}
+            <div className="flex bg-emerald-50/60 p-1 rounded-2xl border border-emerald-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('WHATSAPP');
+                  setError(null);
+                }}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                  authMethod === 'WHATSAPP'
+                    ? 'bg-white text-emerald-700 shadow-xs border border-emerald-200/60'
+                    : 'text-emerald-800/70 hover:text-emerald-900'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                WhatsApp OTP
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('EMAIL');
+                  setError(null);
+                }}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                  authMethod === 'EMAIL'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/60'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Mail className="w-3.5 h-3.5 text-slate-500" />
+                Email OTP
+              </button>
+            </div>
           </div>
         )}
 
@@ -305,102 +401,187 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
 
           {step === 'INPUT' ? (
             <form onSubmit={handleSendOtp} className="space-y-3.5">
-              {/* Email Field (Always visible) */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Email Address <span className="text-orange-600">*</span>
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="email"
-                    required
-                    placeholder="e.g. yourname@gmail.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full text-xs pl-10 pr-3.5 py-3 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 focus:bg-white transition-all font-medium text-slate-800 placeholder:text-slate-400"
-                    autoFocus
-                  />
-                </div>
-              </div>
-
-              {/* Sign Up Fields: Name and Phone (Mandatory) */}
-              {mode === 'SIGNUP' && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="space-y-3.5"
-                >
+              {authMethod === 'WHATSAPP' ? (
+                /* WHATSAPP FLOW INPUTS */
+                <>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Full Name <span className="text-orange-600">*</span>
+                      WhatsApp Mobile Number <span className="text-orange-600">*</span>
                     </label>
-                    <div className="relative">
-                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. Alex Johnson"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="w-full text-xs pl-10 pr-3.5 py-3 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 focus:bg-white transition-all font-medium text-slate-800 placeholder:text-slate-400"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Phone Number <span className="text-orange-600">*</span>
-                    </label>
-                    <div className="relative">
-                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type="tel"
-                        required
-                        placeholder="e.g. 9876543210"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="w-full text-xs pl-10 pr-3.5 py-3 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 focus:bg-white transition-all font-medium text-slate-800 placeholder:text-slate-400"
-                      />
+                    <div className="flex gap-2">
+                      <div className="px-3 py-3 bg-slate-100 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 flex items-center shrink-0">
+                        +91
+                      </div>
+                      <div className="relative flex-1">
+                        <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                          type="tel"
+                          required
+                          placeholder="e.g. 9876543210"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          className="w-full text-xs pl-10 pr-3.5 py-3 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 focus:bg-white transition-all font-medium text-slate-800 placeholder:text-slate-400"
+                          autoFocus
+                        />
+                      </div>
                     </div>
                     <p className="mt-1 text-[11px] text-slate-400">
-                      Used for order status updates and loyalty reward points.
+                      We'll send a 6-digit verification code directly to your WhatsApp.
                     </p>
                   </div>
-                </motion.div>
-              )}
 
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-2 py-3.5 px-4 bg-orange-600 hover:bg-orange-700 active:scale-[0.99] text-white text-xs font-bold rounded-2xl shadow-md shadow-orange-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Sending Code...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Continue with Email</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+                  {/* If Sign Up mode on WhatsApp, ask for Full Name */}
+                  {mode === 'SIGNUP' && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-3.5"
+                    >
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Full Name <span className="text-orange-600">*</span>
+                        </label>
+                        <div className="relative">
+                          <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Alex Johnson"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="w-full text-xs pl-10 pr-3.5 py-3 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 focus:bg-white transition-all font-medium text-slate-800 placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full mt-2 py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white text-xs font-bold rounded-2xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Sending WhatsApp OTP...</span>
+                      </>
+                    ) : (
+                      <>
+                        <MessageSquare className="w-4 h-4" />
+                        <span>Continue with WhatsApp</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </>
+              ) : (
+                /* EMAIL FLOW INPUTS (100% PRESERVED) */
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Email Address <span className="text-orange-600">*</span>
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="email"
+                        required
+                        placeholder="e.g. yourname@gmail.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full text-xs pl-10 pr-3.5 py-3 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 focus:bg-white transition-all font-medium text-slate-800 placeholder:text-slate-400"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  {mode === 'SIGNUP' && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-3.5"
+                    >
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Full Name <span className="text-orange-600">*</span>
+                        </label>
+                        <div className="relative">
+                          <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Alex Johnson"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="w-full text-xs pl-10 pr-3.5 py-3 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 focus:bg-white transition-all font-medium text-slate-800 placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Phone Number <span className="text-orange-600">*</span>
+                        </label>
+                        <div className="relative">
+                          <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type="tel"
+                            required
+                            placeholder="e.g. 9876543210"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            className="w-full text-xs pl-10 pr-3.5 py-3 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 focus:bg-white transition-all font-medium text-slate-800 placeholder:text-slate-400"
+                          />
+                        </div>
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          Used for order status updates and loyalty reward points.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full mt-2 py-3.5 px-4 bg-orange-600 hover:bg-orange-700 active:scale-[0.99] text-white text-xs font-bold rounded-2xl shadow-md shadow-orange-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Sending Code...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Continue with Email</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
             </form>
           ) : (
             /* Step 2: OTP Verification Form */
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <div className="text-center pb-1">
-                <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 mb-2 border border-orange-100">
+                <div className={`inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-2 border ${
+                  authMethod === 'WHATSAPP' 
+                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                    : 'bg-orange-50 text-orange-600 border-orange-100'
+                }`}>
                   <KeyRound className="w-5 h-5" />
                 </div>
                 <p className="text-xs text-slate-600 font-medium">
-                  Enter the 6-digit OTP code sent to:
+                  {authMethod === 'WHATSAPP' 
+                    ? 'Enter the 6-digit OTP code sent to your WhatsApp:' 
+                    : 'Enter the 6-digit OTP code sent to:'}
                 </p>
-                <p className="text-xs font-bold text-slate-900 mt-0.5">{email}</p>
+                <p className="text-xs font-bold text-slate-900 mt-0.5">
+                  {authMethod === 'WHATSAPP' ? `+91 ${phone.replace(/\D/g, '')}` : email}
+                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -408,9 +589,11 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
                     setError(null);
                     setOtp('');
                   }}
-                  className="mt-1 text-[11px] text-orange-600 hover:underline font-semibold"
+                  className={`mt-1 text-[11px] hover:underline font-semibold ${
+                    authMethod === 'WHATSAPP' ? 'text-emerald-600' : 'text-orange-600'
+                  }`}
                 >
-                  Change Email
+                  {authMethod === 'WHATSAPP' ? 'Change Phone Number' : 'Change Email'}
                 </button>
               </div>
 
@@ -422,7 +605,11 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
                   placeholder="• • • • • •"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                  className="w-full text-center tracking-[0.5em] text-xl font-black py-3 bg-slate-50/70 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 focus:bg-white transition-all text-slate-900"
+                  className={`w-full text-center tracking-[0.5em] text-xl font-black py-3 bg-slate-50/70 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 transition-all text-slate-900 ${
+                    authMethod === 'WHATSAPP'
+                      ? 'focus:ring-emerald-500/10 focus:border-emerald-500 focus:bg-white'
+                      : 'focus:ring-orange-500/10 focus:border-orange-500 focus:bg-white'
+                  }`}
                   autoFocus
                 />
               </div>
@@ -433,7 +620,9 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
                   type="button"
                   disabled={resendCooldown > 0 || loading}
                   onClick={handleResendOtp}
-                  className="font-bold text-orange-600 hover:underline disabled:text-slate-400 disabled:no-underline flex items-center gap-1"
+                  className={`font-bold hover:underline disabled:text-slate-400 disabled:no-underline flex items-center gap-1 ${
+                    authMethod === 'WHATSAPP' ? 'text-emerald-600' : 'text-orange-600'
+                  }`}
                 >
                   <RotateCcw className="w-3 h-3" />
                   {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Code'}
@@ -443,7 +632,11 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
               <button
                 type="submit"
                 disabled={loading || otp.length < 4}
-                className="w-full py-3.5 px-4 bg-orange-600 hover:bg-orange-700 active:scale-[0.99] text-white text-xs font-bold rounded-2xl shadow-md shadow-orange-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                className={`w-full py-3.5 px-4 active:scale-[0.99] text-white text-xs font-bold rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer ${
+                  authMethod === 'WHATSAPP'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+                    : 'bg-orange-600 hover:bg-orange-700 shadow-orange-500/20'
+                }`}
               >
                 {loading ? (
                   <>
