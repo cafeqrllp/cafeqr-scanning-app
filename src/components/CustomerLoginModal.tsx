@@ -35,7 +35,9 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
   onLoginSuccess,
   onContinueAsGuest,
 }) => {
-  const [authMethod, setAuthMethod] = useState<'WHATSAPP' | 'EMAIL'>('WHATSAPP');
+  // WhatsApp OTP toggle: set to true to re-enable WhatsApp Phone method in UI
+  const SHOW_WHATSAPP_AUTH = false;
+  const [authMethod, setAuthMethod] = useState<'WHATSAPP' | 'EMAIL'>('EMAIL');
   const [mode, setMode] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
   const [step, setStep] = useState<'INPUT' | 'OTP'>('INPUT');
 
@@ -347,39 +349,41 @@ export const CustomerLoginModal: React.FC<CustomerLoginModalProps> = ({
               </button>
             </div>
 
-            {/* Auth Method Selector (WhatsApp vs Email) */}
-            <div className="flex bg-emerald-50/60 p-1 rounded-2xl border border-emerald-100">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod('WHATSAPP');
-                  setError(null);
-                }}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                  authMethod === 'WHATSAPP'
-                    ? 'bg-white text-emerald-700 shadow-xs border border-emerald-200/60'
-                    : 'text-emerald-800/70 hover:text-emerald-900'
-                }`}
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                WhatsApp OTP
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod('EMAIL');
-                  setError(null);
-                }}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                  authMethod === 'EMAIL'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/60'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Mail className="w-3.5 h-3.5 text-slate-500" />
-                Email OTP
-              </button>
-            </div>
+            {/* Auth Method Selector (WhatsApp vs Email) - Set SHOW_WHATSAPP_AUTH to true to re-enable */}
+            {SHOW_WHATSAPP_AUTH && (
+              <div className="flex bg-emerald-50/60 p-1 rounded-2xl border border-emerald-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMethod('WHATSAPP');
+                    setError(null);
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                    authMethod === 'WHATSAPP'
+                      ? 'bg-white text-emerald-700 shadow-xs border border-emerald-200/60'
+                      : 'text-emerald-800/70 hover:text-emerald-900'
+                  }`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                  WhatsApp OTP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMethod('EMAIL');
+                    setError(null);
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                    authMethod === 'EMAIL'
+                      ? 'bg-white text-slate-900 shadow-xs border border-slate-200/60'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Mail className="w-3.5 h-3.5 text-slate-500" />
+                  Email OTP
+                </button>
+              </div>
+            )}
           </div>
         )}
 
