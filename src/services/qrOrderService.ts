@@ -142,20 +142,20 @@ export const qrOrderService = {
   },
 
   /**
-   * Checks if customer exists by email.
+   * Checks if customer exists by email or phone.
    * POST /api/v1/public/customer/check-email
    */
-  async checkEmail(email: string, clientId: string): Promise<{ exists: boolean; name?: string; phone?: string }> {
-    const res = await api.post('/v1/public/customer/check-email', { email, clientId });
+  async checkEmail(emailOrPhone: string, clientId: string): Promise<{ exists: boolean; name?: string; phone?: string }> {
+    const res = await api.post('/v1/public/customer/check-email', { email: emailOrPhone, clientId });
     return res.data?.data || res.data;
   },
 
   /**
-   * Sends OTP for guest customer verification.
+   * Sends OTP for guest customer verification (Email or WhatsApp).
    * POST /api/v1/public/customer/send-otp
    */
-  async sendOtp(identifier: string): Promise<any> {
-    const res = await api.post('/v1/public/customer/send-otp', { identifier });
+  async sendOtp(identifier: string, clientId?: string, orgId?: string): Promise<any> {
+    const res = await api.post('/v1/public/customer/send-otp', { identifier, clientId, orgId });
     return res.data;
   },
 
