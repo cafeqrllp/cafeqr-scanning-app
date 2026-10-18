@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import api from './lib/apiClient';
 import { Search, X, UtensilsCrossed, AlertTriangle, ArrowRight, Loader2, Sparkles } from 'lucide-react';
 import qrOrderService, {
   type TableSessionInfo,
@@ -293,12 +294,17 @@ export function App() {
     }
   }, []);
 
-  // Poll for real-time table, order & stock changes every 2.5 seconds (and immediately on tab focus)
+  // Real-time table, order & stock changes: the server pushes a "changed" ping over SSE and we re-fetch.
+  // Polling is only a slow safety net (30s), or a faster one (5s) while the stream is down.
   useEffect(() => {
     const { clientId, orgId, tableId } = routeParams;
     if (!clientId || !tableId) return;
 
     let isPolling = false;
+    let streamUp = false;
+    let source: EventSource | null = null;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
     const poll = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
       if (isPolling) return;
@@ -313,11 +319,50 @@ export function App() {
       }
     };
 
-    // Fast 2.5s heartbeat for real-time UI updates
-    const intervalId = setInterval(poll, 2500);
+    // Several pings in quick succession (order + stock + table) collapse into one refresh.
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        poll();
+      }, 150);
+    };
+
+    const openStream = () => {
+      if (source || typeof EventSource === 'undefined' || (typeof document !== 'undefined' && document.hidden)) return;
+      const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+      source = new EventSource(`${base}/v1/public/menu/${clientId}/${orgId || 'null'}/stream?tableId=${encodeURIComponent(tableId)}`);
+      source.addEventListener('init', () => {
+        streamUp = true;
+        scheduleRefresh(); // catch up on anything missed while disconnected
+      });
+      source.addEventListener('changed', scheduleRefresh);
+      source.onerror = () => {
+        streamUp = false; // EventSource reconnects on its own; the fallback poll covers the gap
+      };
+    };
+
+    const closeStream = () => {
+      source?.close();
+      source = null;
+      streamUp = false;
+    };
+
+    openStream();
+
+    // Fallback: 30s while the stream is healthy, 5s while it is down.
+    let tick = 0;
+    const fallbackId = setInterval(() => {
+      tick += 1;
+      if (!streamUp || tick % 6 === 0) poll();
+    }, 5000);
 
     const handleVisibilityOrFocus = () => {
-      if (typeof document !== 'undefined' && !document.hidden) {
+      if (typeof document === 'undefined') return;
+      if (document.hidden) {
+        closeStream(); // no open connection while the tab is in the background
+      } else {
+        openStream();
         poll();
       }
     };
@@ -330,7 +375,9 @@ export function App() {
     }
 
     return () => {
-      clearInterval(intervalId);
+      clearInterval(fallbackId);
+      if (refreshTimer) clearTimeout(refreshTimer);
+      closeStream();
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       }
